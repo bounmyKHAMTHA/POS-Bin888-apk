@@ -554,7 +554,7 @@ class VoucherScreen(MDScreen):
         import threading
         from kivy.clock import Clock
         shop_name = getattr(self, '_print_shop_name', 'Shop')
-        items = getattr(self, '_print_items', [])\
+        items = getattr(self, '_print_items', [])
         total_lak = getattr(self, '_print_total_lak', 0)
         Snackbar(text=f"Connecting to {name}...").open()
         def run():
