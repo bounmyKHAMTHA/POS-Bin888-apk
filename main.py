@@ -502,7 +502,10 @@ class VoucherScreen(MDScreen):
         self._do_print()
 
     def _do_print(self, *args):
-        """Actually send data to the Bluetooth printer."""
+        """Send print job to background thread to prevent UI freeze/crash."""
+        import threading
+        from kivy.clock import Clock
+
         shop_name = getattr(self, '_print_shop_name', 'Bin888 Shop')
         items = getattr(self, '_print_items', [])
         total_lak = getattr(self, '_print_total_lak', 0)
@@ -513,17 +516,22 @@ class VoucherScreen(MDScreen):
 
         Snackbar(text="Connecting to Bluetooth printer...").open()
         app = MDApp.get_running_app()
-        try:
-            app.printer.print_receipt(shop_name, items, total_lak)
-            Snackbar(text="✓ Print sent successfully!").open()
-        except Exception as e:
-            err = str(e)
-            if "No paired" in err or "paired" in err.lower():
-                Snackbar(text="No paired printer found. Please pair a Bluetooth printer first.").open()
-            elif "disabled" in err.lower():
-                Snackbar(text="Bluetooth is OFF. Please turn on Bluetooth.").open()
-            else:
-                Snackbar(text=f"Printer error: {err[:60]}").open()
+
+        def run_print():
+            try:
+                app.printer.print_receipt(shop_name, items, total_lak)
+                Clock.schedule_once(lambda dt: Snackbar(text="\u2713 Print sent successfully!").open(), 0)
+            except Exception as e:
+                err = str(e)
+                if "No paired" in err or "paired" in err.lower():
+                    msg = "No paired printer. Please pair a Bluetooth printer first."
+                elif "disabled" in err.lower() or "enable" in err.lower():
+                    msg = "Bluetooth is OFF. Please turn on Bluetooth."
+                else:
+                    msg = f"Printer error: {err[:60]}"
+                Clock.schedule_once(lambda dt, m=msg: Snackbar(text=m).open(), 0)
+
+        threading.Thread(target=run_print, daemon=True).start()
 
 class BinGroupWidget(MDCard): # Change to MDCard for better grid look
     def __init__(self, price_lak, stock_count, on_qty_change, **kwargs):
