@@ -17,7 +17,7 @@ source.exclude_exts = spec,txt
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests
+requirements = python3, kivy==2.3.0, kivymd==1.2.0, requests, pyjnius
 
 # (str) Custom source folders for requirements
 # ค้นหาไฟล์ฟอนต์และไฟล์ประกอบอื่นๆ
@@ -33,7 +33,8 @@ orientation = portrait
 fullscreen = 0
 
 # (list) Permissions
-android.permissions = INTERNET, BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT
+# เพิ่ม Fine Location เพื่อความแน่นอนในการสแกน Bluetooth บน Android 10-11
+android.permissions = INTERNET, BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION
 
 # (int) Target Android API, should be as high as possible.
 android.api = 34
