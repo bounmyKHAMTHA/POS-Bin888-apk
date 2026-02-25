@@ -30,7 +30,6 @@ from kivy.core.text import LabelBase
 
 # ลำดับความสำคัญของฟอนต์ (เน้นตัวที่อ่านภาษาลาวออกชัวร์ๆ ก่อน)
 font_options = [
-    "Phetsarath_OT.ttf",
     "Lao.ttf",
     "NotoSans-Regular.ttf"
 ]
