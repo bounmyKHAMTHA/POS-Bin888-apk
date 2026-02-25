@@ -1,0 +1,26 @@
+# Buildozer and Kivy
+.buildozer/
+bin/
+*.spec
+# (Optional: keep buildozer.spec but ignore generated files)
+!buildozer.spec
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Mobile App specifics
+last_session.json
+hot_reload.py
+kivy-reloader.toml
+listUes.txt
+
+# OS-specific
+.DS_Store
+Thumbs.db
