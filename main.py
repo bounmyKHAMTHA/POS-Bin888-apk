@@ -14,6 +14,7 @@ from kivymd.uix.list import OneLineListItem, MDList, IRightBodyTouch
 from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.button import MDFlatButton
+from kivymd.uix.snackbar import Snackbar
 from kivy.metrics import dp
 from kivy.core.window import Window
 from kivy.utils import get_color_from_hex
@@ -377,6 +378,11 @@ class VoucherScreen(MDScreen):
         self.summary_receive.text = f"{received:,.0f} LAK"
         self.summary_change.text = f"{change:,.0f} LAK"
 
+        # Save receipt data for printing
+        self._print_shop_name = shop_name
+        self._print_items = items
+        self._print_total_lak = lak_total
+
         if float(totals.get('bonus', 0)) > 0:
             self.summary_bonus.text = f"+ {float(totals['bonus']):,.2f} THB"
             self.summary_bonus_row.height = dp(30)
@@ -473,9 +479,51 @@ class VoucherScreen(MDScreen):
         self.manager.current = 'dashboard'
 
     def print_action(self, *args):
-        # Trigger the printer logic here
-        print("Starting physical print...")
-        # (printer logic is already in app.printer.print_receipt called from Dashboard)
+        """Handle print button - request permissions then print to Bluetooth printer."""
+        # Request Bluetooth permissions at runtime (Android 12+)
+        try:
+            from android.permissions import request_permissions, check_permission, Permission
+            perms = [
+                Permission.BLUETOOTH_CONNECT,
+                Permission.BLUETOOTH_SCAN,
+                Permission.ACCESS_FINE_LOCATION,
+            ]
+            if not all(check_permission(p) for p in perms):
+                def on_permission_result(permissions, grants):
+                    if all(grants):
+                        self._do_print()
+                    else:
+                        Snackbar(text="Bluetooth permission denied. Please allow in Settings.").open()
+                request_permissions(perms, on_permission_result)
+                return
+        except ImportError:
+            pass  # Not on Android (desktop mode)
+
+        self._do_print()
+
+    def _do_print(self, *args):
+        """Actually send data to the Bluetooth printer."""
+        shop_name = getattr(self, '_print_shop_name', 'Bin888 Shop')
+        items = getattr(self, '_print_items', [])
+        total_lak = getattr(self, '_print_total_lak', 0)
+
+        if not items:
+            Snackbar(text="No receipt data to print.").open()
+            return
+
+        Snackbar(text="Connecting to Bluetooth printer...").open()
+        app = MDApp.get_running_app()
+        try:
+            app.printer.print_receipt(shop_name, items, total_lak)
+            Snackbar(text="✓ Print sent successfully!").open()
+        except Exception as e:
+            err = str(e)
+            if "No paired" in err or "paired" in err.lower():
+                Snackbar(text="No paired printer found. Please pair a Bluetooth printer first.").open()
+            elif "disabled" in err.lower():
+                Snackbar(text="Bluetooth is OFF. Please turn on Bluetooth.").open()
+            else:
+                Snackbar(text=f"Printer error: {err[:60]}").open()
 
 class BinGroupWidget(MDCard): # Change to MDCard for better grid look
     def __init__(self, price_lak, stock_count, on_qty_change, **kwargs):
