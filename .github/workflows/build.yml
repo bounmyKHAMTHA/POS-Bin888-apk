@@ -10,16 +10,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Build with Buildozer
-        uses: kivy/buildozer-action@v1.5.0
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
         with:
-          config_file: buildozer.spec
-          repository_read_token: ${{ secrets.GITHUB_TOKEN }}
+          command: buildozer android debug
+          buildozer_version: stable
 
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: package
-          path: bin/*.apk
+          path: ${{ steps.buildozer.outputs.filename }}
