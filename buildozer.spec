@@ -17,7 +17,7 @@ source.exclude_exts = spec,txt
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests,urllib3,chardet,idna,certifi,pyjnius
+requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests
 
 # (str) Custom source folders for requirements
 # ค้นหาไฟล์ฟอนต์และไฟล์ประกอบอื่นๆ
@@ -36,13 +36,13 @@ fullscreen = 0
 android.permissions = INTERNET, BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT
 
 # (int) Target Android API, should be as high as possible.
-android.api = 33
+android.api = 34
 
 # (int) Minimum API your APK will support.
-android.minapi = 21
+android.minapi = 24
 
 # (str) Android NDK version to use
-# android.ndk = 25b
+android.ndk = 25b
 
 # (str) Android SDK directory
 # android.sdk = /path/to/android/sdk
@@ -75,7 +75,10 @@ android.add_javaclasses = android.bluetooth.BluetoothAdapter, android.bluetooth.
 # android.whitelist =
 
 # (str) The Android arch to build for, choices: armeabi-v7a, arm64-v8a, x86, x86_64
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
+
+# use latest stable p4a
+p4a.branch = master
 
 # (bool) enables Android auto backup feature (on by default)
 android.allow_backup = True
