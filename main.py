@@ -550,43 +550,48 @@ class VoucherScreen(MDScreen):
         dlg.open()
 
     def _print_via_socket(self, mac, name):
-        """Full jnius BT: cancelDiscovery + InsecureRfcomm + write byte-by-byte in bg thread"""
+        """Use Java Reflection to create RFCOMM socket - works on all Android versions."""
         import threading
         from kivy.clock import Clock
         shop_name = getattr(self, '_print_shop_name', 'Shop')
-        items = getattr(self, '_print_items', [])
+        items = getattr(self, '_print_items', [])\
         total_lak = getattr(self, '_print_total_lak', 0)
         Snackbar(text=f"Connecting to {name}...").open()
         def run():
+            bt_socket = None
             try:
                 from jnius import autoclass
                 BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
-                UUID = autoclass('java.util.UUID')
                 adapter = BluetoothAdapter.getDefaultAdapter()
-                adapter.cancelDiscovery()  # Required before connecting
+                adapter.cancelDiscovery()
                 device = adapter.getRemoteDevice(mac)
-                serial_uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
-                bt_socket = device.createInsecureRfcommSocketToServiceRecord(serial_uuid)
+                # Reflection method - bypasses UUID quirks on many Android versions
+                clazz = device.getClass()
+                IntegerType = autoclass('java.lang.Integer')
+                method = clazz.getMethod('createRfcommSocket', IntegerType.TYPE)
+                bt_socket = method.invoke(device, 1)
                 bt_socket.connect()
                 ostream = bt_socket.getOutputStream()
                 # Build ESC/POS receipt
-                receipt_bytes = bytearray()
-                receipt_bytes.extend([0x1B, 0x40])       # Init
-                receipt_bytes.extend([0x1B, 0x61, 0x01]) # Center
-                receipt_bytes.extend(f"\n{shop_name}\n\n".encode('utf-8'))
-                receipt_bytes.extend([0x1B, 0x61, 0x00]) # Left
+                receipt = bytearray()
+                receipt.extend([0x1B, 0x40])        # Init
+                receipt.extend([0x1B, 0x61, 0x01])  # Center
+                receipt.extend(f"\n{shop_name}\n\n".encode('utf-8'))
+                receipt.extend([0x1B, 0x61, 0x00])  # Left
                 for item in items:
-                    receipt_bytes.extend(f"{item['name']}\n{item['price_lak']:,.0f} LAK\n".encode('utf-8'))
-                receipt_bytes.extend(f"\nTOTAL: {total_lak:,.0f} LAK\n\n\n\n".encode('utf-8'))
-                # Write byte-by-byte (avoids JNI byte[] conversion issues)
-                for b in receipt_bytes:
+                    receipt.extend(f"{item['name']}\n{item['price_lak']:,.0f} LAK\n".encode('utf-8'))
+                receipt.extend(f"\nTOTAL: {total_lak:,.0f} LAK\n\n\n\n".encode('utf-8'))
+                for b in receipt:
                     ostream.write(b)
                 ostream.flush()
                 bt_socket.close()
-                Clock.schedule_once(lambda dt: Snackbar(text="\u2713 Print OK! (Socket)").open(), 0)
+                Clock.schedule_once(lambda dt: Snackbar(text="\u2713 Print OK! Check your printer.").open(), 0)
             except Exception as e:
                 err = str(e)
-                Clock.schedule_once(lambda dt, m=f"BT Error: {err[:55]}": Snackbar(text=m).open(), 0)
+                if bt_socket:
+                    try: bt_socket.close()
+                    except: pass
+                Clock.schedule_once(lambda dt, m=f"BT: {err[:60]}": Snackbar(text=m).open(), 0)
         threading.Thread(target=run, daemon=True).start()
 
     def print_action(self, *args):
