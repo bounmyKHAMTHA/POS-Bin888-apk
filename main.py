@@ -484,25 +484,28 @@ class VoucherScreen(MDScreen):
     def go_back(self, *args):
         self.manager.current = 'dashboard'
 
-    # ── Method 1: Android Share Intent (Guaranteed to work) ──────────────────
+    # ── Method 1: Android Share Intent ────────────────────────────────
     def print_action_share(self, *args):
-        """Share receipt text via Android Share Sheet (works without printer)"""
+        """Share receipt text via Android Share Sheet."""
         shop_name = getattr(self, '_print_shop_name', 'Shop')
         items = getattr(self, '_print_items', [])
         total_lak = getattr(self, '_print_total_lak', 0)
-        text = f"=== {shop_name} ===\n"
+        lines = [f"=== {shop_name} ==="]
         for item in items:
-            text += f"{item['name']}: {item['price_lak']:,.0f} LAK\n"
-        text += f"\nTOTAL: {total_lak:,.0f} LAK\n"
+            lines.append(f"{item['name']}: {item['price_lak']:,.0f} LAK")
+        lines.append(f"\nTOTAL: {total_lak:,.0f} LAK")
+        text = "\n".join(lines)
         try:
-            from jnius import autoclass, cast
+            from jnius import autoclass
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
             Intent = autoclass('android.content.Intent')
+            JString = autoclass('java.lang.String')
             intent = Intent(Intent.ACTION_SEND)
-            intent.setType('text/plain')
-            intent.putExtra(Intent.EXTRA_TEXT, text)
-            activity = PythonActivity.mActivity
-            activity.startActivity(Intent.createChooser(intent, 'Share Receipt'))
+            intent.setType(JString('text/plain'))
+            intent.putExtra(Intent.EXTRA_TEXT, JString(text))
+            PythonActivity.mActivity.startActivity(
+                Intent.createChooser(intent, JString('Share Receipt'))
+            )
         except Exception as e:
             Snackbar(text=f"Share error: {str(e)[:60]}").open()
 
@@ -547,8 +550,8 @@ class VoucherScreen(MDScreen):
         dlg.open()
 
     def _print_via_socket(self, mac, name):
-        """Connect using Python built-in socket (no jnius needed for actual data transfer)"""
-        import threading, socket as _sock
+        """Full jnius BT: cancelDiscovery + InsecureRfcomm + write byte-by-byte in bg thread"""
+        import threading
         from kivy.clock import Clock
         shop_name = getattr(self, '_print_shop_name', 'Shop')
         items = getattr(self, '_print_items', [])
@@ -556,22 +559,34 @@ class VoucherScreen(MDScreen):
         Snackbar(text=f"Connecting to {name}...").open()
         def run():
             try:
-                receipt = bytes([0x1B, 0x40])  # ESC @ - Initialize
-                receipt += bytes([0x1B, 0x61, 0x01])  # Center
-                receipt += f"\n{shop_name}\n\n".encode('utf-8')
-                receipt += bytes([0x1B, 0x61, 0x00])  # Left
+                from jnius import autoclass
+                BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
+                UUID = autoclass('java.util.UUID')
+                adapter = BluetoothAdapter.getDefaultAdapter()
+                adapter.cancelDiscovery()  # Required before connecting
+                device = adapter.getRemoteDevice(mac)
+                serial_uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
+                bt_socket = device.createInsecureRfcommSocketToServiceRecord(serial_uuid)
+                bt_socket.connect()
+                ostream = bt_socket.getOutputStream()
+                # Build ESC/POS receipt
+                receipt_bytes = bytearray()
+                receipt_bytes.extend([0x1B, 0x40])       # Init
+                receipt_bytes.extend([0x1B, 0x61, 0x01]) # Center
+                receipt_bytes.extend(f"\n{shop_name}\n\n".encode('utf-8'))
+                receipt_bytes.extend([0x1B, 0x61, 0x00]) # Left
                 for item in items:
-                    receipt += f"{item['name']}\n{item['price_lak']:,.0f} LAK\n".encode('utf-8')
-                receipt += f"\nTOTAL: {total_lak:,.0f} LAK\n\n\n\n".encode('utf-8')
-                s = _sock.socket(_sock.AF_BLUETOOTH, _sock.SOCK_STREAM, _sock.BTPROTO_RFCOMM)
-                s.settimeout(10)
-                s.connect((mac, 1))
-                s.send(receipt)
-                s.close()
-                Clock.schedule_once(lambda dt: Snackbar(text="\u2713 Socket print OK!").open(), 0)
+                    receipt_bytes.extend(f"{item['name']}\n{item['price_lak']:,.0f} LAK\n".encode('utf-8'))
+                receipt_bytes.extend(f"\nTOTAL: {total_lak:,.0f} LAK\n\n\n\n".encode('utf-8'))
+                # Write byte-by-byte (avoids JNI byte[] conversion issues)
+                for b in receipt_bytes:
+                    ostream.write(b)
+                ostream.flush()
+                bt_socket.close()
+                Clock.schedule_once(lambda dt: Snackbar(text="\u2713 Print OK! (Socket)").open(), 0)
             except Exception as e:
                 err = str(e)
-                Clock.schedule_once(lambda dt, m=f"Socket error: {err[:55]}": Snackbar(text=m).open(), 0)
+                Clock.schedule_once(lambda dt, m=f"BT Error: {err[:55]}": Snackbar(text=m).open(), 0)
         threading.Thread(target=run, daemon=True).start()
 
     def print_action(self, *args):
