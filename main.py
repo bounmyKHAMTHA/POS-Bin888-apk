@@ -467,16 +467,112 @@ class VoucherScreen(MDScreen):
         scroll.add_widget(content)
         layout.add_widget(scroll)
         
-        # Bottom Buttons
-        btns = MDBoxLayout(size_hint_y=None, height=dp(60), padding=dp(10), spacing=dp(10))
-        btns.add_widget(MDFillRoundFlatButton(text="DONE", size_hint_x=0.4, on_release=self.go_back))
-        btns.add_widget(MDFillRoundFlatButton(text="PRINT NOW", size_hint_x=0.6, md_bg_color=[0, 0.5, 1, 1], on_release=self.print_action))
+        # Bottom Buttons - 3 methods to test
+        btns = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(130), padding=[dp(10),dp(5)], spacing=dp(5))
+        row1 = MDBoxLayout(size_hint_y=None, height=dp(55), spacing=dp(5))
+        row1.add_widget(MDFillRoundFlatButton(text="DONE", size_hint_x=0.35, on_release=self.go_back))
+        row1.add_widget(MDFillRoundFlatButton(text="SHARE", size_hint_x=0.65, md_bg_color=[0.2, 0.65, 0.2, 1], on_release=self.print_action_share))
+        btns.add_widget(row1)
+        row2 = MDBoxLayout(size_hint_y=None, height=dp(55), spacing=dp(5))
+        row2.add_widget(MDFillRoundFlatButton(text="PRINT (Socket)", size_hint_x=0.5, md_bg_color=[0, 0.45, 1, 1], on_release=self.print_action_socket))
+        row2.add_widget(MDFillRoundFlatButton(text="PRINT (JNI)", size_hint_x=0.5, md_bg_color=[0.75, 0.35, 0, 1], on_release=self.print_action))
+        btns.add_widget(row2)
         layout.add_widget(btns)
         
         self.add_widget(layout)
 
     def go_back(self, *args):
         self.manager.current = 'dashboard'
+
+    # ── Method 1: Android Share Intent (Guaranteed to work) ──────────────────
+    def print_action_share(self, *args):
+        """Share receipt text via Android Share Sheet (works without printer)"""
+        shop_name = getattr(self, '_print_shop_name', 'Shop')
+        items = getattr(self, '_print_items', [])
+        total_lak = getattr(self, '_print_total_lak', 0)
+        text = f"=== {shop_name} ===\n"
+        for item in items:
+            text += f"{item['name']}: {item['price_lak']:,.0f} LAK\n"
+        text += f"\nTOTAL: {total_lak:,.0f} LAK\n"
+        try:
+            from jnius import autoclass, cast
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            Intent = autoclass('android.content.Intent')
+            intent = Intent(Intent.ACTION_SEND)
+            intent.setType('text/plain')
+            intent.putExtra(Intent.EXTRA_TEXT, text)
+            activity = PythonActivity.mActivity
+            activity.startActivity(Intent.createChooser(intent, 'Share Receipt'))
+        except Exception as e:
+            Snackbar(text=f"Share error: {str(e)[:60]}").open()
+
+    # ── Method 2: Python socket (No JNI I/O, Background Thread) ─────────────
+    def print_action_socket(self, *args):
+        """List paired BT devices, let user pick, then print via Python socket"""
+        devices = []
+        try:
+            from jnius import autoclass
+            BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
+            adapter = BluetoothAdapter.getDefaultAdapter()
+            if adapter and adapter.isEnabled():
+                for d in adapter.getBondedDevices().toArray():
+                    devices.append({'name': d.getName(), 'mac': d.getAddress()})
+        except Exception as e:
+            Snackbar(text=f"BT scan error: {str(e)[:50]}").open()
+            return
+        if not devices:
+            Snackbar(text="No paired BT devices. Please pair printer in Settings.").open()
+            return
+        # Show picker dialog
+        from kivymd.uix.list import MDList
+        content = MDList()
+        dialog_ref = []
+        def pick(mac, name):
+            if dialog_ref:
+                dialog_ref[0].dismiss()
+            self._print_via_socket(mac, name)
+        for dev in devices:
+            item = OneLineListItem(
+                text=f"{dev['name']} ({dev['mac']})",
+            )
+            item.bind(on_release=lambda x, m=dev['mac'], n=dev['name']: pick(m, n))
+            content.add_widget(item)
+        dlg = MDDialog(
+            title="Select Printer",
+            type="custom",
+            content_cls=content,
+            buttons=[MDFlatButton(text="CANCEL", on_release=lambda x: dialog_ref[0].dismiss())]
+        )
+        dialog_ref.append(dlg)
+        dlg.open()
+
+    def _print_via_socket(self, mac, name):
+        """Connect using Python built-in socket (no jnius needed for actual data transfer)"""
+        import threading, socket as _sock
+        from kivy.clock import Clock
+        shop_name = getattr(self, '_print_shop_name', 'Shop')
+        items = getattr(self, '_print_items', [])
+        total_lak = getattr(self, '_print_total_lak', 0)
+        Snackbar(text=f"Connecting to {name}...").open()
+        def run():
+            try:
+                receipt = bytes([0x1B, 0x40])  # ESC @ - Initialize
+                receipt += bytes([0x1B, 0x61, 0x01])  # Center
+                receipt += f"\n{shop_name}\n\n".encode('utf-8')
+                receipt += bytes([0x1B, 0x61, 0x00])  # Left
+                for item in items:
+                    receipt += f"{item['name']}\n{item['price_lak']:,.0f} LAK\n".encode('utf-8')
+                receipt += f"\nTOTAL: {total_lak:,.0f} LAK\n\n\n\n".encode('utf-8')
+                s = _sock.socket(_sock.AF_BLUETOOTH, _sock.SOCK_STREAM, _sock.BTPROTO_RFCOMM)
+                s.settimeout(10)
+                s.connect((mac, 1))
+                s.send(receipt)
+                s.close()
+                Clock.schedule_once(lambda dt: Snackbar(text="\u2713 Socket print OK!").open(), 0)
+            except Exception as e:
+                err = str(e)
+                Clock.schedule_once(lambda dt, m=f"Socket error: {err[:55]}": Snackbar(text=m).open(), 0)
+        threading.Thread(target=run, daemon=True).start()
 
     def print_action(self, *args):
         """Handle print button - request permissions then print to Bluetooth printer."""
