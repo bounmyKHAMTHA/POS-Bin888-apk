@@ -402,10 +402,15 @@ class VoucherScreen(MDScreen):
         self.phone_text.text = phone
         self._print_phone = phone
         
+        # ค้นหาเรทเงินที่บันทึกไว้ในตัวบัตร (lad) แทนที่จะใช้เรทปัจุบัน
+        actual_rate = exchange_rate
+        if items and 'lad' in items[0]:
+            actual_rate = items[0]['lad']
+            
         # จัดเก็บเรทเงิน
-        self._print_exchange_rate = float(exchange_rate)
+        self._print_exchange_rate = float(actual_rate)
 
-        self.sale_info.text = f"ID: #{sale_id} | {self._print_date} | Rate: {self._print_exchange_rate:,.0f}"
+        self.sale_info.text = f"ID: #{sale_id} | {self._print_date} | ເລດ: {self._print_exchange_rate:,.0f}"
         
         if float(totals.get('bonus', 0)) > 0:
             self.summary_bonus.text = f"+ {float(totals['bonus']):,.2f} THB"
@@ -633,7 +638,7 @@ class VoucherScreen(MDScreen):
                 # 1. Header (Shop, Phone, ID, Date)
                 y = draw_center(shop_name, y, f_h3) + 5
                 y = draw_center(f"Phone: {pt_phone}", y, f_body)
-                y = draw_center(f"ID: #{pt_sid} | {pt_date} | Rate: {pt_rate:,.0f}", y, f_small) + 15
+                y = draw_center(f"ID: #{pt_sid} | {pt_date} | ເລດ: {pt_rate:,.0f}", y, f_small) + 15
                 
                 # Top Demarcation
                 draw.line((10, y, img_w-10, y), fill=0, width=2)
