@@ -394,9 +394,19 @@ class VoucherScreen(MDScreen):
         self._print_received = received
         self._print_change = change
         self._print_sale_id = sale_id
-        self._print_date = now_str
-        self._print_phone = app.config_data.get('phone', '977 18 595')
+        self._print_date = datetime.now().strftime("%d/%m/%Y %H:%M")
+        
+        # ดึงเบอร์โทรศัพท์ร้านค้าจาก Config
+        config = MDApp.get_running_app().config_data
+        phone = config.get('phone_number', '977 18 595')
+        self.phone_text.text = phone
+        self._print_phone = phone
+        
+        # จัดเก็บเรทเงิน
+        self._print_exchange_rate = float(exchange_rate)
 
+        self.sale_info.text = f"ID: #{sale_id} | {self._print_date} | Rate: {self._print_exchange_rate:,.0f}"
+        
         if float(totals.get('bonus', 0)) > 0:
             self.summary_bonus.text = f"+ {float(totals['bonus']):,.2f} THB"
             self.summary_bonus_row.height = dp(30)
@@ -586,6 +596,7 @@ class VoucherScreen(MDScreen):
                 pt_sid = getattr(self, '_print_sale_id', '0000')
                 pt_date = getattr(self, '_print_date', '')
                 pt_phone = getattr(self, '_print_phone', '')
+                pt_rate = getattr(self, '_print_exchange_rate', 650.0)
                 
                 img_w = 384 # 58mm printer width
                 # Estimate height based on dynamic content length + 200 padding at the end
@@ -622,7 +633,7 @@ class VoucherScreen(MDScreen):
                 # 1. Header (Shop, Phone, ID, Date)
                 y = draw_center(shop_name, y, f_h3) + 5
                 y = draw_center(f"Phone: {pt_phone}", y, f_body)
-                y = draw_center(f"ID: #{pt_sid} | {pt_date}", y, f_small) + 15
+                y = draw_center(f"ID: #{pt_sid} | {pt_date} | Rate: {pt_rate:,.0f}", y, f_small) + 15
                 
                 # Top Demarcation
                 draw.line((10, y, img_w-10, y), fill=0, width=2)
@@ -1081,12 +1092,13 @@ class DashboardScreen(MDScreen):
 
             if response.status_code == 201:
                 sale_id = response.json().get('sale_id')
+                exchange_rate = response.json().get('exchange_rate', 650.0)
                 
                 totals = {"lak": total_lak, "thb": total_thb, "bonus": total_bonus}
                 shop_name = app.config_data.get('shop_name', 'Bin888')
                 
                 voucher_screen = self.manager.get_screen('voucher')
-                voucher_screen.setup_voucher(shop_name, final_items_for_receipt, sale_id, totals, received=received_amount)
+                voucher_screen.setup_voucher(shop_name, final_items_for_receipt, sale_id, totals, received=received_amount, exchange_rate=exchange_rate)
                 self.manager.current = 'voucher'
                 
                 app.printer.print_receipt(shop_name, final_items_for_receipt, total_lak)
