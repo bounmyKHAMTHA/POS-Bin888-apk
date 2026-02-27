@@ -17,7 +17,7 @@ source.exclude_exts = spec,txt
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3, kivy==2.3.0, kivymd==1.2.0, requests, pyjnius
+requirements = python3, kivy==2.3.0, kivymd==1.2.0, requests, pyjnius, Pillow
 
 # (str) Custom source folders for requirements
 # ค้นหาไฟล์ฟอนต์และไฟล์ประกอบอื่นๆ

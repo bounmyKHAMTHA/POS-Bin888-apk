@@ -66,6 +66,17 @@ class PrinterManager:
 
     def print_receipt(self, shop_name, items, total_lak):
         print(f"Printing to Bluetooth: {shop_name}")
+        
+        from kivy.utils import platform
+        if platform != 'android':
+            print("Fallback for desktop: print to terminal")
+            print(f"--- {shop_name} ---")
+            for item in items:
+                print(f"{item['name']} - {item['price_lak']:,} LAK")
+            print(f"TOTAL: {total_lak:,.0f} LAK")
+            print("-------------------")
+            return
+
         try:
             from jnius import autoclass
             # Android Bluetooth API
@@ -480,6 +491,11 @@ class VoucherScreen(MDScreen):
 
     def scan_and_pick_printer(self, *args):
         """List paired BT devices, let user pick, then print via JNI UUID"""
+        from kivy.utils import platform
+        if platform != 'android':
+            Snackbar(MDLabel(text="Bluetooth printing is only supported on Android devices.", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
+            return
+            
         devices = []
         try:
             from jnius import autoclass
@@ -489,11 +505,11 @@ class VoucherScreen(MDScreen):
                 for d in adapter.getBondedDevices().toArray():
                     devices.append({'name': d.getName(), 'mac': d.getAddress()})
         except Exception as e:
-            Snackbar(text=f"BT scan error: {str(e)[:50]}").open()
+            Snackbar(MDLabel(text=f"BT scan error: {str(e)[:50]}", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
             return
 
         if not devices:
-            Snackbar(text="No paired BT devices. Please pair your POS printer in Android Settings.").open()
+            Snackbar(MDLabel(text="No paired BT devices. Please pair your POS printer in Android Settings.", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
             return
 
         # Show picker dialog
@@ -527,7 +543,7 @@ class VoucherScreen(MDScreen):
         items = getattr(self, '_print_items', [])
         total_lak = getattr(self, '_print_total_lak', 0)
         
-        Snackbar(text=f"Connecting to {name}...").open()
+        Snackbar(MDLabel(text=f"Connecting to {name}...", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
         
         def run():
             bt_socket = None
@@ -547,34 +563,117 @@ class VoucherScreen(MDScreen):
                 
                 ostream = bt_socket.getOutputStream()
                 
-                # Build ESC/POS receipt exactly like before, but send as bytearray
-                receipt = bytearray()
-                receipt.extend([0x1B, 0x40])        # Init
-                receipt.extend([0x1B, 0x61, 0x01])  # Center
-                receipt.extend(f"\n{shop_name}\n\n".encode('utf-8'))
-                receipt.extend([0x1B, 0x61, 0x00])  # Left
-                for item in items:
-                    receipt.extend(f"{item['name']}\n{item['price_lak']:,.0f} LAK\n".encode('utf-8'))
-                receipt.extend(f"\nTOTAL: {total_lak:,.0f} LAK\n\n\n\n".encode('utf-8'))
+                # ========================================
+                # 1. GENERATE RECEIPT IMAGE VIA PILLOW
+                # ========================================
+                from PIL import Image, ImageDraw, ImageFont
+                global font_path
                 
-                # Write to stream byte-by-byte or in chunks avoiding PyJNIus type mismatch
-                for b in receipt:
-                    ostream.write(b)
+                img_w = 384 # 58mm printer width
+                height = 80 + len(items)*80 + 100
+                img = Image.new('1', (img_w, height), 1)
+                draw = ImageDraw.Draw(img)
+                
+                try:
+                    f_title = ImageFont.truetype(font_path, 32)
+                    f_text = ImageFont.truetype(font_path, 24)
+                    f_footer = ImageFont.truetype(font_path, 28)
+                except Exception:
+                    f_title = ImageFont.load_default()
+                    f_text = f_title
+                    f_footer = f_title
+
+                y = 10
+                
+                # Center Title
+                bbox = draw.textbbox((0, 0), shop_name, font=f_title)
+                tw = bbox[2] - bbox[0]
+                draw.text(((img_w - tw) // 2, y), shop_name, font=f_title, fill=0)
+                y += (bbox[3] - bbox[1]) + 20
+                
+                # Items
+                for item in items:
+                    name_str = item['name']
+                    draw.text((10, y), name_str, font=f_text, fill=0)
+                    y += 35
+                    price_str = f"{item['price_lak']:,.0f} LAK"
+                    price_bbox = draw.textbbox((0, 0), price_str, font=f_text)
+                    pw = price_bbox[2] - price_bbox[0]
+                    draw.text((img_w - 10 - pw, y), price_str, font=f_text, fill=0)
+                    y += 40
+                
+                y += 20
+                draw.line((10, y, img_w-10, y), fill=0, width=2)
+                y += 10
+                
+                total_str = f"TOTAL: {total_lak:,.0f} LAK"
+                tb = draw.textbbox((0, 0), total_str, font=f_footer)
+                tw = tb[2] - tb[0]
+                draw.text(((img_w - tw) // 2, y), total_str, font=f_footer, fill=0)
+                y += (tb[3] - tb[1]) + 40
+                
+                img = img.crop((0, 0, img_w, y))
+                
+                # ========================================
+                # 2. CONVERT PILLOW IMAGE TO ESC/POS RASTER
+                # ========================================
+                w, h = img.size
+                pad_w = ((w + 7) // 8) * 8
+                if pad_w != w:
+                    new_img = Image.new('1', (pad_w, h), 1)
+                    new_img.paste(img, (0,0))
+                    img = new_img
+                    w = pad_w
+
+                xL = (w // 8) % 256
+                xH = (w // 8) // 256
+                yL = h % 256
+                yH = h // 256
+                
+                receipt = bytearray()
+                receipt.extend([0x1B, 0x40]) # Init
+                receipt.extend([0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH])
+                
+                pixels = img.load()
+                for py in range(h):
+                    for px_byte in range(w // 8):
+                        byte_val = 0
+                        for bit in range(8):
+                            idx = px_byte * 8 + bit
+                            if pixels[idx, py] == 0:
+                                byte_val |= (1 << (7 - bit))
+                        receipt.append(byte_val)
+                
+                receipt.extend([0x0A, 0x0A, 0x0A, 0x0A, 0x0A]) # Feed lines
+                
+                # Write to stream
+                # Try passing Python bytes directly (works in modern jnius)
+                try:
+                    ostream.write(bytes(receipt))
+                except Exception:
+                    # Fallback write byte-by-byte if type mapping fails
+                    for b in receipt: ostream.write(b)
+                    
                 ostream.flush()
                 bt_socket.close()
                 
-                Clock.schedule_once(lambda dt: Snackbar(text="\u2713 Print OK! (Check printer)").open(), 0)
+                Clock.schedule_once(lambda dt: Snackbar(MDLabel(text="\u2713 Print OK! (Check printer)", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open(), 0)
             except Exception as e:
                 err = str(e)
                 if bt_socket:
                     try: bt_socket.close()
                     except: pass
-                Clock.schedule_once(lambda dt, m=f"BT Printer Error: {err[:60]}": Snackbar(text=m).open(), 0)
+                Clock.schedule_once(lambda dt, m=f"BT Printer Error: {err[:60]}": Snackbar(MDLabel(text=m, theme_text_color="Custom", text_color=[1, 1, 1, 1])).open(), 0)
                 
         threading.Thread(target=run, daemon=True).start()
 
     def print_action(self, *args):
         """Handle print button - request permissions then show printer picker."""
+        from kivy.utils import platform
+        if platform != 'android':
+            Snackbar(MDLabel(text="Bluetooth printing is only supported on Android", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
+            return
+            
         try:
             from android.permissions import request_permissions, check_permission, Permission
             perms = [
@@ -587,7 +686,7 @@ class VoucherScreen(MDScreen):
                     if all(grants):
                         self.scan_and_pick_printer()
                     else:
-                        Snackbar(text="Bluetooth permission denied.").open()
+                        Snackbar(MDLabel(text="Bluetooth permission denied.", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
                 request_permissions(perms, on_permission_result)
                 return
         except ImportError:
