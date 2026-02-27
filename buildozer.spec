@@ -1,6 +1,6 @@
 [app]
 # (str) Title of your application
-title = ເຕີມເກມ Bin888
+title = ຂາຍເຄື່ອງອອນລາຍ
 
 # (str) Package name
 package.name = bin888

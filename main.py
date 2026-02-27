@@ -156,7 +156,7 @@ class LoginScreen(MDScreen):
         # Header Area
         header = MDBoxLayout(orientation='vertical', size_hint_y=None, height=dp(150), spacing=dp(10))
         header.add_widget(MDLabel(
-            text="Login ເຂົ້າສຸລະບົບ",
+            text="Login ເຂົ້າສຸລະບົບ ຂາຍເຄື່ອງອອນລາຍ",
             halign="center",
             font_style="H5",
             theme_text_color="Primary",
