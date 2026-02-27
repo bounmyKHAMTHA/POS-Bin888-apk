@@ -212,7 +212,10 @@ class LoginScreen(MDScreen):
         
         try:
             app = MDApp.get_running_app()
-            headers = {'X-App-Access-Key': app.APP_KEY}
+            headers = {
+                'X-App-Access-Key': app.APP_KEY,
+                'X-App-Version': app.APP_VERSION
+            }
             response = requests.post(
                 f"{base_url}/api/v1/login/",
                 data={"username": username, "password": password},
@@ -225,6 +228,9 @@ class LoginScreen(MDScreen):
                 MDApp.get_running_app().base_url = base_url
                 MDApp.get_running_app().save_config() # Save for hot reload
                 self.manager.current = 'dashboard'
+            elif response.status_code == 403 and "APP_UPDATE_REQUIRED" in response.text:
+                self.login_btn.text = "UPDATE REQUIRED"
+                MDApp.get_running_app().show_update_dialog()
             else:
                 print("Login Failed:", response.text)
                 self.login_btn.text = "LOGIN FAILED - RETRY"
@@ -1131,6 +1137,7 @@ class Bin888App(MDApp):
     config_data = {}
     base_url = "https://bm9999.pythonanywhere.com"
     APP_KEY = "Bin888-Premium-Mobile-Key-2024"
+    APP_VERSION = "1.0.1"
     brands_cache = []
     printer = PrinterManager()
     
@@ -1220,6 +1227,29 @@ class Bin888App(MDApp):
         if sm and sm.current != 'login':
             dashboard = sm.get_screen('dashboard')
             dashboard.logout()
+
+    def show_update_dialog(self):
+        if not hasattr(self, 'update_dialog') or not self.update_dialog:
+            self.update_dialog = MDDialog(
+                title="ແຈ້ງເຕືອນອັບເດດ (Update!)",
+                text="ມີເວີຊັນໃໝ່ໃຫ້ອັບເດດແລ້ວ\nກະລຸນາຕິດຕໍ່ Admin ເພື່ອຂໍເວີຊັນໃໝ່.",
+                auto_dismiss=False,  # Force user to acknowledge
+                buttons=[
+                    MDFlatButton(
+                        text="ຕົກລົງ",
+                        on_release=lambda x: self.force_logout()
+                    )
+                ],
+            )
+            # Use LaoFont if available
+            if os.path.exists(font_path) and hasattr(self.update_dialog, 'ids'):
+                # Try to apply font to the dialog text elements
+                try:
+                    self.update_dialog.ids.title.font_name = "LaoFont"
+                    self.update_dialog.ids.text.font_name = "LaoFont"
+                except: pass
+        if not self.update_dialog._is_open:
+            self.update_dialog.open()
 
     def fetch_brands(self):
         try:
