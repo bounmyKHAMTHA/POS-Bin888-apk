@@ -321,8 +321,9 @@ class VoucherItemCard(MDCard):
         price_bonus = float(item.get('price_bonus', 0))
         
         bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
+        item_lad = float(item.get('lad', 650.0))
         prices = MDLabel(
-            text=f"{price_lak:,.0f} ກີບ / {price_thb:,.2f} THB{bonus_text}",
+            text=f"{price_lak:,.0f} ກີບ (ເລດ: {item_lad:,.0f}) / {price_thb:,.2f} THB{bonus_text}",
             halign="center", theme_text_color="Primary", font_style="Caption",
             font_name="LaoFont" if os.path.exists(font_path) else None,
             size_hint_y=None, height=dp(20) # Add fixed height to prevent overlap
@@ -410,7 +411,7 @@ class VoucherScreen(MDScreen):
         # จัดเก็บเรทเงิน
         self._print_exchange_rate = float(actual_rate)
 
-        self.sale_info.text = f"ID: #{sale_id} | {self._print_date} | ເລດ: {self._print_exchange_rate:,.0f}"
+        self.sale_info.text = f"ID: #{sale_id} | {self._print_date}"
         
         if float(totals.get('bonus', 0)) > 0:
             self.summary_bonus.text = f"+ {float(totals['bonus']):,.2f} THB"
@@ -638,7 +639,7 @@ class VoucherScreen(MDScreen):
                 # 1. Header (Shop, Phone, ID, Date)
                 y = draw_center(shop_name, y, f_h3) + 5
                 y = draw_center(f"Phone: {pt_phone}", y, f_body)
-                y = draw_center(f"ID: #{pt_sid} | {pt_date} | ເລດ: {pt_rate:,.0f}", y, f_small) + 15
+                y = draw_center(f"ID: #{pt_sid} | {pt_date}", y, f_small) + 15
                 
                 # Top Demarcation
                 draw.line((10, y, img_w-10, y), fill=0, width=2)
@@ -646,7 +647,8 @@ class VoucherScreen(MDScreen):
                 
                 # 2. Items
                 for item in items:
-                    y = draw_center("GIFT CARD", y, f_small)
+                    item_lad = float(item.get('lad', pt_rate))
+                    y = draw_center(f"GIFT CARD | ເລດ: {item_lad:,.0f}", y, f_small)
                     y = draw_center(item['name'], y, f_h6)
                     
                     price_lak = float(item['price_lak'])
