@@ -689,7 +689,7 @@ class VoucherScreen(MDScreen):
                 img = img.crop((0, 0, img_w, y))
                 
                 # ========================================
-                # 2. CONVERT PILLOW IMAGE TO ESC/POS RASTER
+                # 2. CONVERT PILLOW IMAGE TO ESC/POS RASTER IN SLICES
                 # ========================================
                 w, h = img.size
                 pad_w = ((w + 7) // 8) * 8
@@ -698,36 +698,55 @@ class VoucherScreen(MDScreen):
                     new_img.paste(img, (0,0))
                     img = new_img
                     w = pad_w
-
-                xL = (w // 8) % 256
-                xH = (w // 8) // 256
-                yL = h % 256
-                yH = h // 256
-                
-                receipt = bytearray()
-                receipt.extend([0x1B, 0x40]) # Init
-                receipt.extend([0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH])
-                
-                pixels = img.load()
-                for py in range(h):
-                    for px_byte in range(w // 8):
-                        byte_val = 0
-                        for bit in range(8):
-                            idx = px_byte * 8 + bit
-                            if pixels[idx, py] == 0:
-                                byte_val |= (1 << (7 - bit))
-                        receipt.append(byte_val)
-                
-                receipt.extend([0x0A, 0x0A, 0x0A, 0x0A, 0x0A]) # Feed lines
-                
-                # Write to stream
-                # Try passing Python bytes directly (works in modern jnius)
-                try:
-                    ostream.write(bytes(receipt))
-                except Exception:
-                    # Fallback write byte-by-byte if type mapping fails
-                    for b in receipt: ostream.write(b)
                     
+                import time
+                
+                init_cmd = bytearray([0x1B, 0x40]) # Init
+                try:
+                    ostream.write(bytes(init_cmd))
+                except Exception:
+                    for b in init_cmd: ostream.write(b)
+                ostream.flush()
+                time.sleep(0.1)
+
+                slice_height = 200
+                pixels = img.load()
+                
+                for start_y in range(0, h, slice_height):
+                    cur_h = min(slice_height, h - start_y)
+                    
+                    xL = (w // 8) % 256
+                    xH = (w // 8) // 256
+                    yL = cur_h % 256
+                    yH = cur_h // 256
+                    
+                    receipt = bytearray()
+                    receipt.extend([0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH])
+                    
+                    for py in range(start_y, start_y + cur_h):
+                        for px_byte in range(w // 8):
+                            byte_val = 0
+                            for bit in range(8):
+                                idx = px_byte * 8 + bit
+                                # White background (1) -> bit 0, Black pixel (0) -> bit 1
+                                if pixels[idx, py] == 0:
+                                    byte_val |= (1 << (7 - bit))
+                            receipt.append(byte_val)
+                    
+                    # Write slice to stream
+                    try:
+                        ostream.write(bytes(receipt))
+                    except Exception:
+                        for b in receipt: ostream.write(b)
+                    ostream.flush()
+                    time.sleep(0.15) # Small sleep to give printer time to burn and feed graphics
+
+                # Feed lines at the end
+                feed_cmd = bytearray([0x0A, 0x0A, 0x0A, 0x0A])
+                try:
+                    ostream.write(bytes(feed_cmd))
+                except Exception:
+                    for b in feed_cmd: ostream.write(b)
                 ostream.flush()
                 bt_socket.close()
                 
