@@ -156,28 +156,17 @@ class LoginScreen(MDScreen):
         # Header Area
         header = MDBoxLayout(orientation='vertical', size_hint_y=None, height=dp(150), spacing=dp(10))
         header.add_widget(MDLabel(
-            text="BIN888",
+            text="Login ເຂົ້າສຸລະບົບ",
             halign="center",
-            font_style="H3",
-            theme_text_color="Primary"
-        ))
-        header.add_widget(MDLabel(
-            text="Mobile POS System",
-            halign="center",
-            font_style="Subtitle1",
-            theme_text_color="Secondary"
+            font_style="H5",
+            theme_text_color="Primary",
+            font_name="LaoFont" if os.path.exists(font_path) else None
         ))
         layout.add_widget(header)
 
         # Form Area
         content = MDBoxLayout(orientation='vertical', spacing=dp(15))
         
-        self.url_field = MDTextField(
-            text="https://bm9999.pythonanywhere.com",
-            hint_text="Server URL (e.g., http://yourserver.com)",
-            icon_right="server",
-            mode="fill"
-        )
         self.user_field = MDTextField(
             hint_text="Username",
             icon_right="account",
@@ -190,12 +179,13 @@ class LoginScreen(MDScreen):
             mode="fill"
         )
         
-        content.add_widget(self.url_field)
         content.add_widget(self.user_field)
         content.add_widget(self.pass_field)
         
         self.login_btn = MDFillRoundFlatButton(
-            text="LOGIN TO SYSTEM",
+            text="Login ເຂົ້າສຸລະບົບ",
+            font_style="Subtitle1",
+            font_name="LaoFont" if os.path.exists(font_path) else None,
             font_size="18sp",
             pos_hint={"center_x": .5},
             size_hint_x=0.8,
@@ -209,7 +199,7 @@ class LoginScreen(MDScreen):
         self.add_widget(layout)
 
     def perform_login(self, *args):
-        base_url = self.url_field.text.strip("/")
+        base_url = "https://bm9999.pythonanywhere.com"
         username = self.user_field.text
         password = self.pass_field.text
         
@@ -487,8 +477,14 @@ class VoucherScreen(MDScreen):
         
         # Bottom Buttons (Cleaned up from testing)
         btns = MDBoxLayout(size_hint_y=None, height=dp(60), padding=dp(10), spacing=dp(10))
-        btns.add_widget(MDFillRoundFlatButton(text="DONE", size_hint_x=0.4, on_release=self.go_back))
-        btns.add_widget(MDFillRoundFlatButton(text="PRINT RECEIPT", size_hint_x=0.6, md_bg_color=[0, 0.5, 1, 1], on_release=self.print_action))
+        done_btn = MDFillRoundFlatButton(text="ສຳເລັດ", size_hint_x=0.4, on_release=self.go_back)
+        if os.path.exists(font_path): done_btn.font_name = "LaoFont"
+        btns.add_widget(done_btn)
+        
+        print_btn = MDFillRoundFlatButton(text="ພິມໃບບິນ", size_hint_x=0.6, md_bg_color=[0, 0.5, 1, 1], on_release=self.print_action)
+        if os.path.exists(font_path): print_btn.font_name = "LaoFont"
+        btns.add_widget(print_btn)
+        
         layout.add_widget(btns)
         
         self.add_widget(layout)
@@ -870,7 +866,7 @@ class DashboardScreen(MDScreen):
     def refresh_ui(self):
         config = MDApp.get_running_app().config_data
         shop_name = config.get('shop_name', 'Bin888 Shop')
-        self.toolbar.title = f"POS: {shop_name}"
+        self.toolbar.title = shop_name
         self.fetch_bins()
 
     def __init__(self, **kwargs):
@@ -890,11 +886,8 @@ class DashboardScreen(MDScreen):
         )
         self.layout.add_widget(self.toolbar)
         
-        # Categories Header
-        actions = MDBoxLayout(size_hint_y=None, height=dp(50), padding=dp(5))
-        actions.add_widget(MDLabel(text="Available Items By Group", padding=(dp(10), 0)))
-        self.layout.add_widget(actions)
-
+        # Removed 'Available Items By Group' as requested
+        
         # Items Grid (2 Columns)
         self.scroll = MDScrollView()
         from kivymd.uix.gridlayout import MDGridLayout
@@ -912,9 +905,10 @@ class DashboardScreen(MDScreen):
         )
         
         self.total_label = MDLabel(
-            text="Total: 0 LAK",
+            text="ລວມ: 0 ກີບ",
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
+            font_name="LaoFont" if os.path.exists(font_path) else None,
             font_style="H6"
         )
         
@@ -926,7 +920,8 @@ class DashboardScreen(MDScreen):
         )
 
         self.print_btn = MDRaisedButton(
-            text="PAY & PRINT",
+            text="ຕັດສະຕ໋ອກຂາຍ",
+            font_name="LaoFont" if os.path.exists(font_path) else None,
             md_bg_color=(1, 0.7, 0, 1), # Amber/Orange
             on_release=self.process_payment
         )
@@ -938,10 +933,11 @@ class DashboardScreen(MDScreen):
         footer_layout.add_widget(self.print_btn)
         
         self.cart_info = MDLabel(
-            text="Items in cart: 0",
+            text="ຈຳນວນ: 0",
             theme_text_color="Custom",
             text_color=(0.8, 0.8, 0.8, 1),
-            font_style="Caption"
+            font_name="LaoFont" if os.path.exists(font_path) else None,
+            font_style="Subtitle1"
         )
         
         container.add_widget(self.cart_info)
@@ -1019,8 +1015,8 @@ class DashboardScreen(MDScreen):
             total_lak += price * qty
             total_count += qty
             
-        self.total_label.text = f"Total: {total_lak:,.0f} LAK"
-        self.cart_info.text = f"Items in cart: {total_count}"
+        self.total_label.text = f"ລວມ: {total_lak:,.0f} ກີບ"
+        self.cart_info.text = f"ຈຳນວນ: {total_count}"
 
     def process_payment(self, *args):
         total_count = sum(self.selected_quantities.values())

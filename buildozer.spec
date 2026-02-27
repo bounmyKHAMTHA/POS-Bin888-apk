@@ -1,6 +1,6 @@
 [app]
 # (str) Title of your application
-title = Bin888 POS
+title = ເຕີມເກມ Bin888
 
 # (str) Package name
 package.name = bin888
@@ -21,7 +21,11 @@ requirements = python3, kivy==2.3.0, kivymd==1.2.0, requests, pyjnius, Pillow
 
 # (str) Custom source folders for requirements
 # ค้นหาไฟล์ฟอนต์และไฟล์ประกอบอื่นๆ
-source.include_patterns = assets/*,*.ttf,*.json
+source.include_patterns = assets/*,*.ttf,*.json,*.png
+
+# (str) Icon of the application
+# ให้เอารูปโลโก้แอปที่อยากได้มาวางไว้ที่โฟลเดอร์นี้ แล้วตั้งชื่อว่า app_icon.png ได้เลยครับ
+icon.filename = %(source.dir)s/app_icon.png
 
 # (str) Application versioning (method 1)
 version = 1.0.0
