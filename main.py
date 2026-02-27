@@ -393,6 +393,13 @@ class VoucherScreen(MDScreen):
         self._print_shop_name = shop_name
         self._print_items = items
         self._print_total_lak = lak_total
+        self._print_total_thb = totals['thb']
+        self._print_total_bonus = totals.get('bonus', 0)
+        self._print_received = received
+        self._print_change = change
+        self._print_sale_id = sale_id
+        self._print_date = now_str
+        self._print_phone = app.config_data.get('phone', '977 18 595')
 
         if float(totals.get('bonus', 0)) > 0:
             self.summary_bonus.text = f"+ {float(totals['bonus']):,.2f} THB"
@@ -569,48 +576,115 @@ class VoucherScreen(MDScreen):
                 from PIL import Image, ImageDraw, ImageFont
                 global font_path
                 
+                # Fetch full data
+                pt_thb = getattr(self, '_print_total_thb', 0)
+                pt_bonus = getattr(self, '_print_total_bonus', 0)
+                pt_rec = getattr(self, '_print_received', 0)
+                pt_chg = getattr(self, '_print_change', 0)
+                pt_sid = getattr(self, '_print_sale_id', '0000')
+                pt_date = getattr(self, '_print_date', '')
+                pt_phone = getattr(self, '_print_phone', '')
+                
                 img_w = 384 # 58mm printer width
-                height = 80 + len(items)*80 + 100
+                # Estimate height based on dynamic content length + 200 padding at the end
+                height = 250 + (len(items) * 200) + 300 + 200
                 img = Image.new('1', (img_w, height), 1)
                 draw = ImageDraw.Draw(img)
                 
                 try:
-                    f_title = ImageFont.truetype(font_path, 32)
-                    f_text = ImageFont.truetype(font_path, 24)
-                    f_footer = ImageFont.truetype(font_path, 28)
+                    f_h3 = ImageFont.truetype(font_path, 34)
+                    f_h6 = ImageFont.truetype(font_path, 28)
+                    f_body = ImageFont.truetype(font_path, 24)
+                    f_small = ImageFont.truetype(font_path, 20)
                 except Exception:
-                    f_title = ImageFont.load_default()
-                    f_text = f_title
-                    f_footer = f_title
+                    f_h3 = ImageFont.load_default()
+                    f_h6 = f_h3
+                    f_body = f_h3
+                    f_small = f_h3
+
+                def draw_center(text, y_pos, font):
+                    bbox = draw.textbbox((0, 0), str(text), font=font)
+                    tw = bbox[2] - bbox[0]
+                    draw.text(((img_w - tw) // 2, y_pos), str(text), font=font, fill=0)
+                    return y_pos + (bbox[3] - bbox[1]) + 10
+
+                def draw_row(label, value, y_pos, font):
+                    draw.text((10, y_pos), str(label), font=font, fill=0)
+                    bbox = draw.textbbox((0, 0), str(value), font=font)
+                    tw = bbox[2] - bbox[0]
+                    draw.text((img_w - 10 - tw, y_pos), str(value), font=font, fill=0)
+                    return y_pos + (bbox[3] - bbox[1]) + 10
 
                 y = 10
                 
-                # Center Title
-                bbox = draw.textbbox((0, 0), shop_name, font=f_title)
-                tw = bbox[2] - bbox[0]
-                draw.text(((img_w - tw) // 2, y), shop_name, font=f_title, fill=0)
-                y += (bbox[3] - bbox[1]) + 20
+                # 1. Header (Shop, Phone, ID, Date)
+                y = draw_center(shop_name, y, f_h3) + 5
+                y = draw_center(f"Phone: {pt_phone}", y, f_body)
+                y = draw_center(f"ID: #{pt_sid} | {pt_date}", y, f_small) + 15
                 
-                # Items
-                for item in items:
-                    name_str = item['name']
-                    draw.text((10, y), name_str, font=f_text, fill=0)
-                    y += 35
-                    price_str = f"{item['price_lak']:,.0f} LAK"
-                    price_bbox = draw.textbbox((0, 0), price_str, font=f_text)
-                    pw = price_bbox[2] - price_bbox[0]
-                    draw.text((img_w - 10 - pw, y), price_str, font=f_text, fill=0)
-                    y += 40
-                
-                y += 20
+                # Top Demarcation
                 draw.line((10, y, img_w-10, y), fill=0, width=2)
+                y += 15
+                
+                # 2. Items
+                for item in items:
+                    y = draw_center("GIFT CARD", y, f_small)
+                    y = draw_center(item['name'], y, f_h6)
+                    
+                    price_lak = float(item['price_lak'])
+                    price_thb = float(item['price_thb'])
+                    price_bonus = float(item.get('price_bonus', 0))
+                    
+                    bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
+                    sub_text = f"{price_lak:,.0f} ກີບ / {price_thb:,.2f} THB{bonus_text}"
+                    y = draw_center(sub_text, y, f_small) + 15
+                    
+                    # PIN Outline Box
+                    y = draw_center("PIN CODE / REDEEM CODE", y, f_small)
+                    pw_str = str(item.get('pw', 'N/A'))
+                    
+                    bbox = draw.textbbox((0, 0), pw_str, font=f_h3)
+                    tw = bbox[2] - bbox[0]
+                    th = bbox[3] - bbox[1]
+                    
+                    bx = (img_w - tw) // 2 - 20
+                    by = y - 5
+                    bw = tw + 40
+                    bh = th + 20
+                    
+                    # Draw rounded rectangle equivalent using lines
+                    draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
+                    draw.text(((img_w - tw) // 2, y + 2), pw_str, font=f_h3, fill=0)
+                    y += bh + 25
+                    
+                    # Bottom Demarcation
+                    draw.line((10, y, img_w-10, y), fill=0, width=1)
+                    y += 15
+                
+                # 3. Summary
+                y = draw_row("Total LAK:", f"{total_lak:,.0f} LAK", y, f_body)
+                y = draw_row("Total THB:", f"{pt_thb:,.2f} THB", y, f_body)
+                if pt_bonus > 0:
+                    y = draw_row("Total Bonus:", f"+ {pt_bonus:,.2f} THB", y, f_body)
+                
+                y += 10
+                draw.line((10, y, img_w-10, y), fill=0, width=1)
                 y += 10
                 
-                total_str = f"TOTAL: {total_lak:,.0f} LAK"
-                tb = draw.textbbox((0, 0), total_str, font=f_footer)
-                tw = tb[2] - tb[0]
-                draw.text(((img_w - tw) // 2, y), total_str, font=f_footer, fill=0)
-                y += (tb[3] - tb[1]) + 40
+                y = draw_row("Received:", f"{pt_rec:,.0f} LAK", y, f_body)
+                y = draw_row("Change:", f"{pt_chg:,.0f} LAK", y, f_h6) + 20
+                
+                # 4. Footer
+                footer1 = "*** ທຸກບິນທີ່ຂາຍໄປຢູ່ໄດ້ບໍ່ເກີນ 3 ວັນຈະໝົດອາຍຸ"
+                footer2 = "ຫາກໝົດອາຍຸແລ້ວຕິດຕໍ່ຮ້ານຄ້າເພື່ອແກ້ໄຂ ***"
+                footer3 = "ຂອບໃຈທີ່ໃຊ້ບໍລິການ / Thank You!"
+                
+                y = draw_center(footer1, y, f_small)
+                y = draw_center(footer2, y, f_small) + 10
+                y = draw_center(footer3, y, f_small)
+                
+                # EXTRA PADDING AT THE BOTTOM (1-2 lines for tearing)
+                y += 150 
                 
                 img = img.crop((0, 0, img_w, y))
                 
