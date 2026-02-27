@@ -358,7 +358,7 @@ class VoucherItemCard(MDCard):
         content.add_widget(sep_layout)
 
 class VoucherScreen(MDScreen):
-    def setup_voucher(self, shop_name, items, sale_id, totals, received=0):
+    def setup_voucher(self, shop_name, items, sale_id, totals, received=0, exchange_rate=650.0, **kwargs):
         self.items_container.clear_widgets()
         self.shop_label.text = shop_name
         app = MDApp.get_running_app()
@@ -978,13 +978,18 @@ class DashboardScreen(MDScreen):
         try:
             headers = {
                 'Authorization': f'Token {token}',
-                'X-App-Access-Key': app.APP_KEY
+                'X-App-Access-Key': app.APP_KEY,
+                'X-App-Version': app.APP_VERSION
             }
             response = requests.get(url, headers=headers, timeout=10)
             
             if response.status_code == 401:
                 print("Session expired or logged in elsewhere")
                 app.force_logout()
+                return
+
+            if response.status_code == 403 and "APP_UPDATE_REQUIRED" in response.text:
+                app.show_update_dialog()
                 return
 
             if response.status_code == 200:
@@ -1086,13 +1091,18 @@ class DashboardScreen(MDScreen):
         try:
             headers = {
                 'Authorization': f'Token {token}',
-                'X-App-Access-Key': app.APP_KEY
+                'X-App-Access-Key': app.APP_KEY,
+                'X-App-Version': app.APP_VERSION
             }
             response = requests.post(url, json=payload, headers=headers, timeout=15)
             
             if response.status_code == 401:
                 print("Session expired or logged in elsewhere")
                 app.force_logout()
+                return
+
+            if response.status_code == 403 and "APP_UPDATE_REQUIRED" in response.text:
+                app.show_update_dialog()
                 return
 
             if response.status_code == 201:
@@ -1110,14 +1120,19 @@ class DashboardScreen(MDScreen):
                 self.clear_cart()
                 self.fetch_bins()
             else:
-                resp_json = response.json()
-                error_msg = resp_json.get('error', response.text)
+                try:
+                    resp_json = response.json()
+                    error_msg = resp_json.get('error', "เกิดข้อผิดพลาดในการทำรายการ")
+                except:
+                    error_msg = "เกิดข้อผิดพลาดในการเชื่อมต่อ หรือเซิร์ฟเวอร์มีปัญหา"
+                    
                 print(f"Sale Failed: {error_msg}")
                 self.show_error_dialog(error_msg)
         except Exception as e:
             import traceback
             traceback.print_exc()
             print(f"App error during sale process: {str(e)}")
+            self.show_error_dialog(f"Error: {str(e)}")
 
     def show_error_dialog(self, text):
         dialog = MDDialog(
