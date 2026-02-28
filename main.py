@@ -712,6 +712,23 @@ class VoucherScreen(MDScreen):
                 for item in items:
                     item_lad = float(item.get('lad', pt_rate))
                     y = draw_center(f"ID: #{pt_sid} | {pt_date} | ເລດ: {item_lad:,.0f}", y, f_small)
+                    
+                    # Match Brand Name logic like VoucherItemCard
+                    name_lower = str(item.get('name', '')).lower()
+                    base_brand_label = "GIFT CARD"
+                    app = MDApp.get_running_app()
+                    matched_brand = None
+                    for b in app.brands_cache if hasattr(app, 'brands_cache') else []:
+                        if b.get('keyword') and b['keyword'].lower() in name_lower:
+                            matched_brand = b
+                            break
+                    if not matched_brand and hasattr(app, 'brands_cache') and app.brands_cache:
+                        import random
+                        matched_brand = random.choice(app.brands_cache)
+                    if matched_brand:
+                        base_brand_label = matched_brand['name'].upper()
+
+                    y = draw_center(base_brand_label, y, f_body)
                     y = draw_center(item['name'], y, f_h6)
                     
                     price_lak = float(item['price_lak'])
