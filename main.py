@@ -733,21 +733,22 @@ class VoucherScreen(MDScreen):
                     y = draw_center(sub_text, y, f_small) + 15
                     
                     # PIN Outline Box
-                    y = draw_center("PIN CODE / REDEEM CODE", y, f_small)
+                    y = draw_center("PIN CODE / REDEEM CODE", y, f_small) + 5
                     pw_str = str(item.get('pw', 'N/A'))
                     
                     bbox = draw.textbbox((0, 0), pw_str, font=f_h3)
                     tw = bbox[2] - bbox[0]
                     th = bbox[3] - bbox[1]
                     
+                    # Box dimensions
                     bx = (img_w - tw) // 2 - 20
-                    by = y - 10
+                    by = y
                     bw = tw + 40
-                    bh = th + 30
+                    bh = th + 25
                     
                     # Draw rounded rectangle equivalent using lines
                     draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
-                    draw.text(((img_w - tw) // 2, y + 2), pw_str, font=f_h3, fill=0)
+                    draw.text(((img_w - tw) // 2, y + 5), pw_str, font=f_h3, fill=0)
                     y += bh + 25
                     
                     # Bottom Demarcation
