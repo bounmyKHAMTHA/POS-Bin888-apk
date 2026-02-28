@@ -741,9 +741,9 @@ class VoucherScreen(MDScreen):
                     th = bbox[3] - bbox[1]
                     
                     bx = (img_w - tw) // 2 - 20
-                    by = y - 5
+                    by = y - 10
                     bw = tw + 40
-                    bh = th + 20
+                    bh = th + 30
                     
                     # Draw rounded rectangle equivalent using lines
                     draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
@@ -1092,13 +1092,13 @@ class RecycleScreen(MDScreen):
         
         try:
             # 1. Fetch Status
-            status_resp = requests.get(f"{base_url}/api/v1/recycle/status/", headers=headers, timeout=10)
+            status_resp = requests.get(f"{base_url}/api/v1/recycle-status/", headers=headers, timeout=10)
             if status_resp.status_code == 200:
                 data = status_resp.json()
                 Clock.schedule_once(lambda dt: self.update_status_ui(data))
             
             # 2. Fetch Logs
-            logs_resp = requests.get(f"{base_url}/api/v1/recycle/logs/", headers=headers, timeout=10)
+            logs_resp = requests.get(f"{base_url}/api/v1/recycle-logs/", headers=headers, timeout=10)
             if logs_resp.status_code == 200:
                 logs_data = logs_resp.json().get('results', [])
                 Clock.schedule_once(lambda dt: self.update_logs_ui(logs_data))
@@ -1173,7 +1173,7 @@ class RecycleScreen(MDScreen):
                 'job_limit': job_limit,
                 'price_filter': price_filter
             }
-            resp = requests.post(f"{base_url}/api/v1/recycle/start/", data=payload, headers=headers, timeout=120) # บอทอาจใช้นาน
+            resp = requests.post(f"{base_url}/api/v1/recycle-start/", data=payload, headers=headers, timeout=120) # บอทอาจใช้นาน
             if resp.status_code == 200:
                 self.refresh_data()
             else:
@@ -1193,7 +1193,7 @@ class RecycleScreen(MDScreen):
         base_url = app.base_url
         
         try:
-            resp = requests.post(f"{base_url}/api/v1/recycle/reset/", headers=headers, timeout=15)
+            resp = requests.post(f"{base_url}/api/v1/recycle-reset/", headers=headers, timeout=15)
             if resp.status_code == 200:
                 self.refresh_data()
         except Exception as e:
@@ -2423,7 +2423,6 @@ class DashboardScreen(MDScreen):
             voucher_screen.setup_voucher(shop_name, final_items_for_receipt, sale_id, totals, received=received_amount, exchange_rate=exchange_rate)
             self.manager.current = 'voucher'
             
-            app.printer.print_receipt(shop_name, final_items_for_receipt, total_lak)
             self.clear_cart()
             self.fetch_bins()
         else:
