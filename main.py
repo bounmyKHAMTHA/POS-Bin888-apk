@@ -293,161 +293,17 @@ class LoginScreen(MDScreen):
         self.login_btn.opacity = 1
         self.login_btn.text = msg
 
-class VoucherItemCard(MDCard):
-    def __init__(self, item, sale_id="", sale_date="", **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = "vertical"
-        self.size_hint_y = None
-        self.height = dp(260)
-        self.padding = 0
-        self.spacing = 0
-        self.elevation = 1
-        
-        # Brand styling
-        name_lower = str(item.get('name', '')).lower()
-        header_color = [0.2, 0.2, 0.2, 1]
-        base_brand_label = "GIFT CARD"
-        logo_url = None
-        
-        app = MDApp.get_running_app()
-        matched_brand = None
-        if hasattr(app, 'brands_cache') and app.brands_cache:
-            import random
-            matched_brand = random.choice(app.brands_cache)
-            
-        if matched_brand:
-            base_brand_label = matched_brand['name'].upper()
-            logo_url = matched_brand.get('logo')
-            kw = matched_brand.get('keyword', '').lower()
-            if 'apple' in kw: header_color = [0.17, 0.24, 0.31, 1]
-            elif 'google' in kw: header_color = [0.2, 0.66, 0.32, 1]
-            elif 'garena' in kw: header_color = [0.93, 0.11, 0.14, 1]
-
-        # Apply Header Color to the Entire Card to ensure smooth top corners
-        self.md_bg_color = header_color
-        self.radius = [10, 10, 10, 10]
-
-        # Combine ID and Date
-        item_lad = float(item.get('lad', 650.0))
-        full_header_text = f"ID: #{sale_id} | {sale_date} | ເລດ: {item_lad:,.0f}"
-
-        # Header Text Holder (Centered in the top part)
-        header_text_area = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(40), padding=[0, dp(2)], spacing=0)
-        
-        # ID and Date
-        header_text_area.add_widget(MDLabel(
-            text=full_header_text, halign="center", 
-            theme_text_color="Custom", text_color=[0.9,0.9,0.9,1], 
-            font_style="Overline", size_hint_y=None, height=dp(15)
-        ))
-        
-        # Brand Name
-        header_text_area.add_widget(MDLabel(
-            text=base_brand_label, halign="center", 
-            theme_text_color="Custom", text_color=[1,1,1,1], 
-            font_style="Caption", bold=True, size_hint_y=None, height=dp(20)
-        ))
-        
-        self.add_widget(header_text_area)
-
-        # Content Area (White Background, Rounded Bottom)
-        content = MDBoxLayout(
-            orientation="vertical", 
-            md_bg_color=[1, 1, 1, 1], # Pure White
-            radius=[0, 0, 10, 10],   # Round only bottom corners
-            padding=[dp(10), dp(0), dp(10), dp(10)], # Top padding 0 for tighter fit
-            spacing=dp(5),
-            size_hint_y=1 # Fill the rest of the card
-        )
-        
-        # Logo if available
-        if logo_url:
-            from kivy.uix.image import AsyncImage
-            full_logo_url = logo_url if logo_url.startswith('http') else f"{app.base_url}{logo_url}"
-            # Logo (Fixed size block)
-            logo_img = AsyncImage(
-                source=full_logo_url, 
-                size_hint=(1, None), 
-                height=dp(35), # Clear height
-                allow_stretch=True,
-                keep_ratio=True
-            )
-            content.add_widget(logo_img)
-            # Product Name (Increased 30% to H6)
-            content.add_widget(MDLabel(text=item['name'], halign="center", font_style="H6", bold=True, size_hint_y=None, height=dp(25)))
-        else:
-            content.add_widget(MDLabel(text=item['name'], halign="center", font_style="H6", bold=True, size_hint_y=None, height=dp(25)))
-        
-        # Display LAK / THB + Bonus (Match Web - Using Lao Unicode)
-        price_lak = float(item['price_lak'])
-        price_thb = float(item['price_thb'])
-        price_bonus = float(item.get('price_bonus', 0))
-        
-        bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
-        prices = MDLabel(
-            text=f"{price_lak:,.0f} ກີບ / {price_thb:,.2f} THB{bonus_text}",
-            halign="center", theme_text_color="Primary", font_style="Caption",
-            font_name="LaoFont" if os.path.exists(font_path) else None,
-            size_hint_y=None, height=dp(20) # Add fixed height to prevent overlap
-        )
-        content.add_widget(prices)
-        
-        # PIN BOX (Larger for visibility)
-        pin_box = MDCard(
-            orientation="vertical", padding=dp(10), 
-            md_bg_color=[0.96, 0.96, 0.96, 1],
-            line_color=[0, 0, 0, 1], line_width=1,
-            size_hint_y=None, height=dp(70)
-        )
-        pin_box.add_widget(MDLabel(text="PIN CODE / REDEEM CODE", halign="center", font_style="Caption", theme_text_color="Secondary"))
-        # PIN reduced to match Product Name style (H6 Bold)
-        pin_box.add_widget(MDLabel(text=str(item.get('pw', 'N/A')), halign="center", font_style="H6", bold=True, theme_text_color="Primary"))
-        
-        content.add_widget(pin_box)
-        
-        # Mock Barcode (Restored & Optimized)
-        content.add_widget(MDIcon(
-            icon="barcode", halign="center", 
-            theme_text_color="Primary", font_size=dp(55),
-            pos_hint={"center_x": .5}, size_hint=(None, None), size=(dp(120), dp(35))
-        ))
-
-        self.add_widget(content)
-        
-        # Dashed separator with scissors icon (Premium Look)
-        sep_layout = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(20), padding=[dp(10), 0])
-        sep_layout.add_widget(MDIcon(icon="content-cut", font_size=dp(18), theme_text_color="Secondary", pos_hint={"center_y": .5}))
-        sep_layout.add_widget(MDLabel(text="-" * 45, halign="center", theme_text_color="Secondary"))
-        content.add_widget(sep_layout)
+# VoucherItemCard has been removed in favor of direct Image Rendering
 
 class VoucherScreen(MDScreen):
     def setup_voucher(self, shop_name, items, sale_id, totals, received=0, exchange_rate=650.0, **kwargs):
-        self.items_container.clear_widgets()
-        self.shop_label.text = shop_name
         app = MDApp.get_running_app()
-        self.phone_text.text = f" {app.config_data.get('phone', '977 18 595')}"
-        
-        # Current Date Time for header
         from datetime import datetime
         now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
         
-        # Safe float conversion for display
         lak_total = float(totals.get('lak', 0))
-        self.sale_info.height = 0
-        self.sale_info.opacity = 0
-        
-        for item in items:
-            self.items_container.add_widget(VoucherItemCard(item, sale_id, now_str))
-            
-        # Update Summary Table with float casting to avoid format errors
-        self.summary_lak.text = f"{float(totals['lak']):,.0f} LAK"
-        self.summary_thb.text = f"{float(totals['thb']):,.2f} THB"
-        
-        # Received and Change logic
         received = float(received)
         change = received - lak_total if received > lak_total else 0
-        self.summary_receive.text = f"{received:,.0f} LAK"
-        self.summary_change.text = f"{change:,.0f} LAK"
 
         # Save receipt data for printing
         self._print_shop_name = shop_name
@@ -458,29 +314,50 @@ class VoucherScreen(MDScreen):
         self._print_received = received
         self._print_change = change
         self._print_sale_id = sale_id
-        self._print_date = datetime.now().strftime("%d/%m/%Y %H:%M")
+        self._print_date = now_str
         
-        # ดึงเบอร์โทรศัพท์ร้านค้าจาก Config
-        config = MDApp.get_running_app().config_data
+        # Phone logic
+        config = app.config_data
         phone = config.get('phone_number', '977 18 595')
-        self.phone_text.text = phone
         self._print_phone = phone
         
-        # ค้นหาเรทเงินที่บันทึกไว้ในตัวบัตร (lad) แทนที่จะใช้เรทปัจุบัน
+        # Rate logic
         actual_rate = exchange_rate
         if items and 'lad' in items[0]:
             actual_rate = items[0]['lad']
-            
-        # จัดเก็บเรทเงิน
         self._print_exchange_rate = float(actual_rate)
         
-        if float(totals.get('bonus', 0)) > 0:
-            self.summary_bonus.text = f"+ {float(totals['bonus']):,.2f} THB"
-            self.summary_bonus_row.height = dp(30)
-            self.summary_bonus_row.opacity = 1
-        else:
-            self.summary_bonus_row.height = 0
-            self.summary_bonus_row.opacity = 0
+        # Generation Step (Replace Kivy UI with real Receipt Image)
+        img = self.generate_receipt_image(
+            shop_name=self._print_shop_name,
+            items=self._print_items,
+            total_lak=self._print_total_lak,
+            pt_thb=self._print_total_thb,
+            pt_bonus=self._print_total_bonus,
+            pt_rec=self._print_received,
+            pt_chg=self._print_change,
+            pt_sid=self._print_sale_id,
+            pt_date=self._print_date,
+            pt_phone=self._print_phone,
+            pt_rate=self._print_exchange_rate
+        )
+        
+        import os
+        import tempfile
+        preview_path = os.path.join(tempfile.gettempdir(), "receipt_preview.png")
+        img.save(preview_path)
+        
+        # Clear items container
+        self.preview_container.clear_widgets()
+        
+        from kivy.uix.image import Image as KivyImage
+        self.preview_container.add_widget(KivyImage(
+            source=preview_path,
+            allow_stretch=True,
+            keep_ratio=True,
+            size_hint_y=None,
+            height=dp(min(img.height // 1.5, 1200)) # Adjust height dynamically
+        ))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -497,63 +374,10 @@ class VoucherScreen(MDScreen):
         scroll = MDScrollView(do_scroll_x=False)
         content = MDBoxLayout(orientation="vertical", padding=dp(15), spacing=dp(10), size_hint_y=None)
         content.bind(minimum_height=content.setter('height'))
-        
-        # Shop Info Header (More compact)
-        header = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(80), spacing=dp(2))
-        self.shop_label = MDLabel(text="SHOP NAME", halign="center", font_style="H6", bold=True)
-        self.shop_phone = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(25), adaptive_width=True, pos_hint={"center_x": .5})
-        self.shop_phone.add_widget(MDIcon(icon="whatsapp", size_hint=(None, None), size=(dp(20), dp(20)), theme_text_color="Custom", text_color=[0.2, 0.6, 0.2, 1]))
-        self.phone_text = MDLabel(text="Phone", halign="left", font_style="Caption", adaptive_width=True)
-        self.shop_phone.add_widget(self.phone_text)
-        
-        self.sale_info = MDLabel(text="ID: #0000", halign="center", theme_text_color="Secondary", font_style="Overline")
-        header.add_widget(self.shop_label)
-        header.add_widget(self.shop_phone)
-        header.add_widget(self.sale_info)
-        content.add_widget(header)
-        
-        # Items Container
-        self.items_container = MDBoxLayout(orientation="vertical", spacing=dp(15), size_hint_y=None)
-        self.items_container.bind(minimum_height=self.items_container.setter('height'))
-        content.add_widget(self.items_container)
-        
-        # Summary Table (Ultra Compact - Font size reduced by ~20%)
-        summary_card = MDCard(orientation="vertical", padding=dp(5), spacing=dp(2), size_hint_y=None, height=dp(140), elevation=2)
-        
-        def create_row(label, val_attr):
-            row = MDBoxLayout(size_hint_y=None, height=dp(23))
-            row.add_widget(MDLabel(text=label, font_style="Caption"))
-            val_label = MDLabel(text="0", halign="right", font_style="Subtitle2", bold=True)
-            setattr(self, val_attr, val_label)
-            row.add_widget(val_label)
-            return row
-
-        summary_card.add_widget(create_row("Total LAK:", "summary_lak"))
-        summary_card.add_widget(create_row("Total THB:", "summary_thb"))
-        self.summary_bonus_row = create_row("Total Bonus:", "summary_bonus")
-        summary_card.add_widget(self.summary_bonus_row)
-        
-        # Add Receive/Change rows
-        summary_card.add_widget(MDBoxLayout(size_hint_y=None, height=dp(1), md_bg_color=[0,0,0,0.1])) # Separation
-        summary_card.add_widget(create_row("Received:", "summary_receive"))
-        change_row = create_row("Change:", "summary_change")
-        change_row.children[0].theme_text_color = "Primary"
-        change_row.children[0].bold = True
-        summary_card.add_widget(change_row)
-        
-        content.add_widget(summary_card)
-        
-        # Info Text (Compact)
-        footer_text = (
-            "*** ທຸກບິນທີ່ຂາຍໄປຢູ່ໄດ້ບໍ່ເກີນ 3 ວັນຈະໝົດອາຍຸ ຫາກໝົດອາຍຸແລ້ວຕິດຕໍ່ຮ້ານຄ້າເພື່ອແກ້ໄຂ ***\n"
-            "ຂອບໃຈທີ່ໃຊ້ບໍລິການ / Thank You!"
-        )
-        content.add_widget(MDLabel(
-            text=footer_text,
-            halign="center", theme_text_color="Secondary", 
-            font_style="Caption", height=dp(50), size_hint_y=None,
-            font_name="LaoFont" if os.path.exists(font_path) else None
-        ))
+        # Preview Container
+        self.preview_container = MDBoxLayout(orientation="vertical", spacing=dp(5), size_hint_y=None)
+        self.preview_container.bind(minimum_height=self.preview_container.setter('height'))
+        content.add_widget(self.preview_container)
         
         scroll.add_widget(content)
         layout.add_widget(scroll)
@@ -620,6 +444,126 @@ class VoucherScreen(MDScreen):
         dialog_ref.append(dlg)
         dlg.open()
 
+    def generate_receipt_image(self, shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate):
+        from PIL import Image, ImageDraw, ImageFont
+        global font_path
+        
+        img_w = 384 # 58mm printer width
+        # Estimate height based on dynamic content length + 200 padding at the end
+        height = 250 + (len(items) * 200) + 300 + 200
+        img = Image.new('1', (img_w, height), 1)
+        draw = ImageDraw.Draw(img)
+        
+        try:
+            f_h3 = ImageFont.truetype(font_path, 34)
+            f_h6 = ImageFont.truetype(font_path, 28)
+            f_body = ImageFont.truetype(font_path, 24)
+            f_small = ImageFont.truetype(font_path, 20)
+        except Exception:
+            f_h3 = ImageFont.load_default()
+            f_h6 = f_h3
+            f_body = f_h3
+            f_small = f_h3
+
+        def draw_center(text, y_pos, font):
+            bbox = draw.textbbox((0, 0), str(text), font=font)
+            tw = bbox[2] - bbox[0]
+            draw.text(((img_w - tw) // 2, y_pos), str(text), font=font, fill=0)
+            return y_pos + (bbox[3] - bbox[1]) + 10
+
+        def draw_row(label, value, y_pos, font):
+            draw.text((10, y_pos), str(label), font=font, fill=0)
+            bbox = draw.textbbox((0, 0), str(value), font=font)
+            tw = bbox[2] - bbox[0]
+            draw.text((img_w - 10 - tw, y_pos), str(value), font=font, fill=0)
+            return y_pos + (bbox[3] - bbox[1]) + 10
+
+        y = 10
+        
+        # 1. Header (Shop, Phone)
+        y = draw_center(shop_name, y, f_h6)
+        y = draw_center(f"Phone: {pt_phone}", y, f_body)
+        y += 10
+        
+        # 2. Items
+        draw.line((10, y, img_w-10, y), fill=0, width=1)
+        y += 15
+        
+        for item in items:
+            item_lad = float(item.get('lad', pt_rate))
+            y = draw_center(f"ID: #{pt_sid} | {pt_date} | ເລດ: {item_lad:,.0f}", y, f_small)
+            
+            base_brand_label = "GIFT CARD"
+            app = MDApp.get_running_app()
+            matched_brand = None
+            if hasattr(app, 'brands_cache') and app.brands_cache:
+                import random
+                matched_brand = random.choice(app.brands_cache)
+            if matched_brand:
+                base_brand_label = matched_brand['name'].upper()
+
+            y = draw_center(base_brand_label, y, f_body)
+            y = draw_center(item['name'], y, f_h6)
+            
+            price_lak = float(item['price_lak'])
+            price_thb = float(item['price_thb'])
+            price_bonus = float(item.get('price_bonus', 0))
+            
+            bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
+            sub_text = f"{price_lak:,.0f} ກີບ / {price_thb:,.2f} THB{bonus_text}"
+            y = draw_center(sub_text, y, f_small) + 15
+            
+            # PIN Outline Box
+            y = draw_center("PIN CODE / REDEEM CODE", y, f_small) + 5
+            pw_str = str(item.get('pw', 'N/A'))
+            
+            bbox = draw.textbbox((0, 0), pw_str, font=f_h3)
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+            
+            # Box dimensions
+            bx = (img_w - tw) // 2 - 20
+            by = y
+            bw = tw + 40
+            bh = th + 25
+            
+            # Draw rounded rectangle equivalent using lines
+            draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
+            draw.text(((img_w - tw) // 2, y + 5), pw_str, font=f_h3, fill=0)
+            y += bh + 25
+            
+            # Bottom Demarcation
+            draw.line((10, y, img_w-10, y), fill=0, width=1)
+            y += 15
+        
+        # 3. Summary
+        y = draw_row("Total LAK:", f"{total_lak:,.0f} LAK", y, f_body)
+        y = draw_row("Total THB:", f"{pt_thb:,.2f} THB", y, f_body)
+        if pt_bonus > 0:
+            y = draw_row("Total Bonus:", f"+ {pt_bonus:,.2f} THB", y, f_body)
+        
+        y += 10
+        draw.line((10, y, img_w-10, y), fill=0, width=1)
+        y += 10
+        
+        y = draw_row("Received:", f"{pt_rec:,.0f} LAK", y, f_body)
+        y = draw_row("Change:", f"{pt_chg:,.0f} LAK", y, f_h6) + 20
+        
+        # 4. Footer
+        footer1 = "*** ທຸກບິນທີ່ຂາຍໄປຢູ່ໄດ້ບໍ່ເກີນ 3 ວັນຈະໝົດອາຍຸ"
+        footer2 = "ຫາກໝົດອາຍຸແລ້ວຕິດຕໍ່ຮ້ານຄ້າເພື່ອແກ້ໄຂ ***"
+        footer3 = "ຂອບໃຈທີ່ໃຊ້ບໍລິການ / Thank You!"
+        
+        y = draw_center(footer1, y, f_small)
+        y = draw_center(footer2, y, f_small) + 10
+        y = draw_center(footer3, y, f_small)
+        
+        # EXTRA PADDING AT THE BOTTOM (1-2 lines for tearing)
+        y += 150 
+        
+        img = img.crop((0, 0, img_w, y))
+        return img
+
     def _print_via_socket(self, mac, name):
         """Connect and print using PROVEN Android JNI UUID method from test app."""
         import threading
@@ -652,8 +596,7 @@ class VoucherScreen(MDScreen):
                 # ========================================
                 # 1. GENERATE RECEIPT IMAGE VIA PILLOW
                 # ========================================
-                from PIL import Image, ImageDraw, ImageFont
-                global font_path
+                from PIL import Image
                 
                 # Fetch full data
                 pt_thb = getattr(self, '_print_total_thb', 0)
@@ -665,122 +608,9 @@ class VoucherScreen(MDScreen):
                 pt_phone = getattr(self, '_print_phone', '')
                 pt_rate = getattr(self, '_print_exchange_rate', 650.0)
                 
-                img_w = 384 # 58mm printer width
-                # Estimate height based on dynamic content length + 200 padding at the end
-                height = 250 + (len(items) * 200) + 300 + 200
-                img = Image.new('1', (img_w, height), 1)
-                draw = ImageDraw.Draw(img)
-                
-                try:
-                    f_h3 = ImageFont.truetype(font_path, 34)
-                    f_h6 = ImageFont.truetype(font_path, 28)
-                    f_body = ImageFont.truetype(font_path, 24)
-                    f_small = ImageFont.truetype(font_path, 20)
-                except Exception:
-                    f_h3 = ImageFont.load_default()
-                    f_h6 = f_h3
-                    f_body = f_h3
-                    f_small = f_h3
-
-                def draw_center(text, y_pos, font):
-                    bbox = draw.textbbox((0, 0), str(text), font=font)
-                    tw = bbox[2] - bbox[0]
-                    draw.text(((img_w - tw) // 2, y_pos), str(text), font=font, fill=0)
-                    return y_pos + (bbox[3] - bbox[1]) + 10
-
-                def draw_row(label, value, y_pos, font):
-                    draw.text((10, y_pos), str(label), font=font, fill=0)
-                    bbox = draw.textbbox((0, 0), str(value), font=font)
-                    tw = bbox[2] - bbox[0]
-                    draw.text((img_w - 10 - tw, y_pos), str(value), font=font, fill=0)
-                    return y_pos + (bbox[3] - bbox[1]) + 10
-
-                y = 10
-                
-                # 1. Header (Shop, Phone)
-                y = draw_center(shop_name, y, f_h3) + 5
-                y = draw_center(f"Phone: {pt_phone}", y, f_body) + 15
-                
-                # Top Demarcation
-                draw.line((10, y, img_w-10, y), fill=0, width=2)
-                y += 15
-                
-                # 2. Items
-                for item in items:
-                    item_lad = float(item.get('lad', pt_rate))
-                    y = draw_center(f"ID: #{pt_sid} | {pt_date} | ເລດ: {item_lad:,.0f}", y, f_small)
-                    
-                    # Match Brand Name logic like VoucherItemCard
-                    name_lower = str(item.get('name', '')).lower()
-                    base_brand_label = "GIFT CARD"
-                    app = MDApp.get_running_app()
-                    matched_brand = None
-                    if hasattr(app, 'brands_cache') and app.brands_cache:
-                        import random
-                        matched_brand = random.choice(app.brands_cache)
-                    if matched_brand:
-                        base_brand_label = matched_brand['name'].upper()
-
-                    y = draw_center(base_brand_label, y, f_body)
-                    y = draw_center(item['name'], y, f_h6)
-                    
-                    price_lak = float(item['price_lak'])
-                    price_thb = float(item['price_thb'])
-                    price_bonus = float(item.get('price_bonus', 0))
-                    
-                    bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
-                    sub_text = f"{price_lak:,.0f} ກີບ / {price_thb:,.2f} THB{bonus_text}"
-                    y = draw_center(sub_text, y, f_small) + 15
-                    
-                    # PIN Outline Box
-                    y = draw_center("PIN CODE / REDEEM CODE", y, f_small) + 5
-                    pw_str = str(item.get('pw', 'N/A'))
-                    
-                    bbox = draw.textbbox((0, 0), pw_str, font=f_h3)
-                    tw = bbox[2] - bbox[0]
-                    th = bbox[3] - bbox[1]
-                    
-                    # Box dimensions
-                    bx = (img_w - tw) // 2 - 20
-                    by = y
-                    bw = tw + 40
-                    bh = th + 25
-                    
-                    # Draw rounded rectangle equivalent using lines
-                    draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
-                    draw.text(((img_w - tw) // 2, y + 5), pw_str, font=f_h3, fill=0)
-                    y += bh + 25
-                    
-                    # Bottom Demarcation
-                    draw.line((10, y, img_w-10, y), fill=0, width=1)
-                    y += 15
-                
-                # 3. Summary
-                y = draw_row("Total LAK:", f"{total_lak:,.0f} LAK", y, f_body)
-                y = draw_row("Total THB:", f"{pt_thb:,.2f} THB", y, f_body)
-                if pt_bonus > 0:
-                    y = draw_row("Total Bonus:", f"+ {pt_bonus:,.2f} THB", y, f_body)
-                
-                y += 10
-                draw.line((10, y, img_w-10, y), fill=0, width=1)
-                y += 10
-                
-                y = draw_row("Received:", f"{pt_rec:,.0f} LAK", y, f_body)
-                y = draw_row("Change:", f"{pt_chg:,.0f} LAK", y, f_h6) + 20
-                
-                # 4. Footer
-                footer1 = "*** ທຸກບິນທີ່ຂາຍໄປຢູ່ໄດ້ບໍ່ເກີນ 3 ວັນຈະໝົດອາຍຸ"
-                footer2 = "ຫາກໝົດອາຍຸແລ້ວຕິດຕໍ່ຮ້ານຄ້າເພື່ອແກ້ໄຂ ***"
-                footer3 = "ຂອບໃຈທີ່ໃຊ້ບໍລິການ / Thank You!"
-                
-                y = draw_center(footer1, y, f_small)
-                y = draw_center(footer2, y, f_small) + 10
-                y = draw_center(footer3, y, f_small)
-                
-                # EXTRA PADDING AT THE BOTTOM (1-2 lines for tearing)
-                y += 150 
-                
-                img = img.crop((0, 0, img_w, y))
+                img = self.generate_receipt_image(
+                    shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate
+                )
                 
                 # ========================================
                 # 2. CONVERT PILLOW IMAGE TO ESC/POS RASTER IN SLICES
@@ -1019,6 +849,18 @@ class RecycleScreen(MDScreen):
         
         # Price Filter
         config_card.add_widget(MDLabel(text="ເລືອກປະເພດບິນ (Amount LAK)", font_style="Caption", font_name="LaoFont" if os.path.exists(font_path) else None))
+        
+        from kivy.lang import Builder
+        if not hasattr(self.__class__, '_lao_spinner_registered'):
+            Builder.load_string('''
+<LaoSpinnerOption@SpinnerOption>:
+    font_name: "LaoFont"
+    color: 0, 0, 0, 1
+    background_normal: ''
+    background_color: 0.95, 0.95, 0.95, 1
+''')
+            self.__class__._lao_spinner_registered = True
+            
         self.price_spinner = Spinner(
             text='ທັງໝົດ / All',
             values=('ທັງໝົດ / All',),
@@ -1027,7 +869,8 @@ class RecycleScreen(MDScreen):
             background_normal='',
             background_color=(1, 1, 1, 1),
             color=(0, 0, 0, 1),
-            font_name="LaoFont" if os.path.exists(font_path) else None
+            font_name="LaoFont" if os.path.exists(font_path) else None,
+            option_cls='LaoSpinnerOption' if os.path.exists(font_path) else 'SpinnerOption'
         )
         config_card.add_widget(self.price_spinner)
         
@@ -2350,9 +2193,42 @@ class DashboardScreen(MDScreen):
             
         total_lak = sum(price * qty for price, qty in self.selected_quantities.items() if qty > 0)
         
-        self.show_loading_dialog()
-        # SPEED IMPROVEMENT: Skip confirmation dialog and go straight to sale
-        threading.Thread(target=self._do_checkout_thread, args=(total_lak, total_lak), daemon=True).start()
+        # Build Cash Received Dialog
+        content = MDBoxLayout(orientation="vertical", spacing=dp(10), size_hint_y=None, height=dp(120))
+        content.add_widget(MDLabel(text=f"ຍອດລວມ: {total_lak:,.0f} ກີບ", font_style="Subtitle1", font_name="LaoFont" if os.path.exists(font_path) else None))
+        
+        cash_input = MDTextField(
+            hint_text="ຮັບເງິນທັງໝົດ (ຄ່າເລີ່ມຕົ້ນ = ພໍດີ)",
+            input_filter="int",
+            mode="fill"
+        )
+        if os.path.exists(font_path): cash_input.font_name_hint_text = "LaoFont"
+        content.add_widget(cash_input)
+        
+        def confirm_payment(instance):
+            try:
+                recv_amt = int(cash_input.text.strip()) if cash_input.text.strip() else total_lak
+            except:
+                recv_amt = total_lak
+                
+            self.payment_dialog.dismiss()
+            self.show_loading_dialog()
+            threading.Thread(target=self._do_checkout_thread, args=(total_lak, recv_amt), daemon=True).start()
+
+        self.payment_dialog = MDDialog(
+            title="ຮັບເງິນ ແລະ ທອນເງິນ",
+            type="custom",
+            content_cls=content,
+            buttons=[
+                MDFlatButton(text="ຍົກເລີກ", on_release=lambda x: self.payment_dialog.dismiss(), font_name="LaoFont" if os.path.exists(font_path) else None),
+                MDFlatButton(text="ຢືນຢັນການຂາຍ", on_release=confirm_payment, font_name="LaoFont" if os.path.exists(font_path) else None)
+            ]
+        )
+        if os.path.exists(font_path) and hasattr(self.payment_dialog, 'ids') and 'title' in self.payment_dialog.ids:
+            try: self.payment_dialog.ids.title.font_name = "LaoFont"
+            except: pass
+            
+        self.payment_dialog.open()
 
     def _do_checkout_thread(self, expected_total_lak, received_amount):
         app = MDApp.get_running_app()
@@ -2414,18 +2290,24 @@ class DashboardScreen(MDScreen):
             return
 
         if response.status_code == 201:
-            sale_id = response.json().get('sale_id')
-            exchange_rate = response.json().get('exchange_rate', 650.0)
-            
-            totals = {"lak": total_lak, "thb": total_thb, "bonus": total_bonus}
-            shop_name = app.config_data.get('shop_name', 'Bin888')
-            
-            voucher_screen = self.manager.get_screen('voucher')
-            voucher_screen.setup_voucher(shop_name, final_items_for_receipt, sale_id, totals, received=received_amount, exchange_rate=exchange_rate)
-            self.manager.current = 'voucher'
-            
-            self.clear_cart()
-            self.fetch_bins()
+            try:
+                sale_id = response.json().get('sale_id')
+                exchange_rate = response.json().get('exchange_rate', 650.0)
+                
+                totals = {"lak": total_lak, "thb": total_thb, "bonus": total_bonus}
+                shop_name = app.config_data.get('shop_name', 'Bin888')
+                
+                voucher_screen = self.manager.get_screen('voucher')
+                voucher_screen.setup_voucher(shop_name, final_items_for_receipt, sale_id, totals, received=received_amount, exchange_rate=exchange_rate)
+                self.manager.current = 'voucher'
+                
+                self.clear_cart()
+                self.fetch_bins()
+            except Exception as e:
+                import traceback
+                err = traceback.format_exc()
+                print(f"CRASH IN VOUCHER RENDER: {err}")
+                self.show_error_dialog(f"Error rendering receipt:\n{str(e)}")
         else:
             try:
                 resp_json = response.json()
