@@ -193,7 +193,7 @@ class LoginScreen(MDScreen):
     canvas.after:
         PopMatrix
 ''')
-        self.spinner = SpinningLogo(source='icon.png', size_hint=(None, None), size=(dp(60), dp(60)), pos_hint={'center_x': .5})
+        self.spinner = SpinningLogo(source='app_icon.png', size_hint=(None, None), size=(dp(60), dp(60)), pos_hint={'center_x': .5})
         self.spinner.opacity = 0
         layout.add_widget(self.spinner)
 
@@ -277,6 +277,7 @@ class LoginScreen(MDScreen):
             MDApp.get_running_app().config_data = data
             MDApp.get_running_app().base_url = base_url
             MDApp.get_running_app().save_config() # Save for hot reload
+            threading.Thread(target=MDApp.get_running_app().fetch_brands, daemon=True).start()
             self.manager.current = 'dashboard'
         elif response.status_code == 403 and "APP_UPDATE_REQUIRED" in response.text:
             self.login_btn.text = "UPDATE REQUIRED"
@@ -310,11 +311,7 @@ class VoucherItemCard(MDCard):
         
         app = MDApp.get_running_app()
         matched_brand = None
-        for b in app.brands_cache:
-            if b.get('keyword') and b['keyword'].lower() in name_lower:
-                matched_brand = b
-                break
-        if not matched_brand and app.brands_cache:
+        if hasattr(app, 'brands_cache') and app.brands_cache:
             import random
             matched_brand = random.choice(app.brands_cache)
             
@@ -718,11 +715,7 @@ class VoucherScreen(MDScreen):
                     base_brand_label = "GIFT CARD"
                     app = MDApp.get_running_app()
                     matched_brand = None
-                    for b in app.brands_cache if hasattr(app, 'brands_cache') else []:
-                        if b.get('keyword') and b['keyword'].lower() in name_lower:
-                            matched_brand = b
-                            break
-                    if not matched_brand and hasattr(app, 'brands_cache') and app.brands_cache:
+                    if hasattr(app, 'brands_cache') and app.brands_cache:
                         import random
                         matched_brand = random.choice(app.brands_cache)
                     if matched_brand:
@@ -2252,7 +2245,7 @@ class DashboardScreen(MDScreen):
             from kivymd.uix.dialog import MDDialog
             from kivy.uix.boxlayout import BoxLayout
             box = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(80), spacing=dp(10))
-            spinner = SpinningLogo(source='icon.png', size_hint=(None, None), size=(dp(60), dp(60)), pos_hint={'center_x': .5})
+            spinner = SpinningLogo(source='app_icon.png', size_hint=(None, None), size=(dp(60), dp(60)), pos_hint={'center_x': .5})
             spinner.start()
             box.add_widget(spinner)
             box.add_widget(MDLabel(text="ກຳລັງປະມວນຜົນ...", halign="center", font_name="LaoFont" if os.path.exists(font_path) else None))
@@ -2508,8 +2501,7 @@ class Bin888App(MDApp):
         from kivy.clock import Clock
         Clock.schedule_interval(self._check_idle_timeout, 60) # Check every minute
         
-        # Initial brand fetch
-        self.fetch_brands()
+        # We will fetch brands AFTER loading config to ensure correct base_url
         
         if os.path.exists(font_path):
             self.theme_cls.font_styles["H1"] = ["LaoFont", 96, False, -1.5]
@@ -2533,6 +2525,9 @@ class Bin888App(MDApp):
         
         # Persistence Logic: Auto-Login & Screen Restore
         self.load_config()
+        # Fetch brands from correct backend
+        self.fetch_brands()
+        
         if self.config_data.get('token'):
             # If we have a token, skip login
             last_screen = self.config_data.get('last_screen', 'dashboard')
@@ -2562,8 +2557,7 @@ class Bin888App(MDApp):
                 with open("last_session.json", "r") as f:
                     data = json.load(f)
                     self.config_data = data.get("config_data", {})
-                    # For local development, we ignore the base_url from session to prevent sticking to production
-                    # self.base_url = data.get("base_url", self.base_url)
+                    self.base_url = data.get("base_url", self.base_url)
             except: pass
 
     def _reset_activity(self, *args):
@@ -2610,11 +2604,17 @@ class Bin888App(MDApp):
     def fetch_brands(self):
         try:
             # Simple fetch to populate categories/logos
-            headers = {'X-App-Access-Key': self.APP_KEY}
+            headers = {
+                'X-App-Access-Key': self.APP_KEY,
+                'X-App-Version': self.APP_VERSION
+            }
+            print(f"Fetching brands from: {self.base_url}/api/v1/brands/")
             response = requests.get(f"{self.base_url}/api/v1/brands/", headers=headers, timeout=5)
             if response.status_code == 200:
                 self.brands_cache = response.json()
                 print(f"Loaded {len(self.brands_cache)} brands from server")
+            else:
+                print(f"Failed to fetch brands. Status: {response.status_code}, Msg: {response.text}")
         except Exception as e:
             print(f"Could not fetch brands: {e}")
 
