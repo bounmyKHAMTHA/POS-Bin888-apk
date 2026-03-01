@@ -30,7 +30,9 @@ jobs:
             ~/.buildozer
             .buildozer
             ~/.gradle
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec', 'app_icon.png', 'presplash.png') }}
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec', 'main.py') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
 
       - name: Install Buildozer & Cython
         run: |
