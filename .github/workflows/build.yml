@@ -51,8 +51,16 @@ jobs:
         run: |
           yes | buildozer android debug
 
+      - name: Collect APK
+        run: |
+          echo "=== Searching for APK ==="
+          find . -name "*.apk" 2>/dev/null
+          mkdir -p artifacts
+          find . -name "*.apk" -exec cp {} artifacts/ \;
+          ls -la artifacts/
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Bin888-APK
-          path: bin/*.apk
+          path: artifacts/*.apk
