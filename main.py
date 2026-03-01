@@ -2578,15 +2578,16 @@ class DashboardScreen(MDScreen):
         self.show_error_dialog(f"Error: {error_msg}")
 
     def _handle_checkout_result(self, response, total_lak, total_thb, total_bonus, received_amount, final_items_for_receipt):
-        self.hide_loading_dialog()
         app = MDApp.get_running_app()
         
         if response.status_code == 401:
             print("Session expired or logged in elsewhere")
+            self.hide_loading_dialog()
             app.force_logout()
             return
 
         if response.status_code == 403 and "APP_UPDATE_REQUIRED" in response.text:
+            self.hide_loading_dialog()
             app.show_update_dialog()
             return
 
@@ -2601,6 +2602,7 @@ class DashboardScreen(MDScreen):
                 voucher_screen = self.manager.get_screen('voucher')
                 voucher_screen.setup_voucher(shop_name, final_items_for_receipt, sale_id, totals, received=received_amount, exchange_rate=exchange_rate)
                 self.manager.current = 'voucher'
+                self.hide_loading_dialog()
                 
                 self.clear_cart()
                 self.fetch_bins()
@@ -2608,8 +2610,10 @@ class DashboardScreen(MDScreen):
                 import traceback
                 err = traceback.format_exc()
                 print(f"CRASH IN VOUCHER RENDER: {err}")
+                self.hide_loading_dialog()
                 self.show_error_dialog(f"Error rendering receipt:\n{str(e)}")
         else:
+            self.hide_loading_dialog()
             try:
                 resp_json = response.json()
                 error_msg = resp_json.get('error', "เกิดข้อผิดพลาดในการทำรายการ")
