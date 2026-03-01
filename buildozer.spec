@@ -33,7 +33,7 @@ presplash.filename = %(source.dir)s/presplash.png
 android.presplash_color = #311B92
 
 # (str) Application versioning (method 1)
-version = 1.0.5
+version = 1.0.7
 
 # (str) Supported orientation (one of landscape, sensorLandscape, portrait or all)
 orientation = portrait

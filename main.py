@@ -2662,7 +2662,7 @@ class Bin888App(MDApp):
     config_data = {}
     base_url = "https://bm9999.pythonanywhere.com"
     APP_KEY = "Bin888-Premium-Mobile-Key-2024"
-    APP_VERSION = "1.0.1"
+    APP_VERSION = "1.0.7"
     brands_cache = []
     printer = PrinterManager()
     
