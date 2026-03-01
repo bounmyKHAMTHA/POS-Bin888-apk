@@ -880,47 +880,58 @@ class BinGroupWidget(MDCard): # Change to MDCard for better grid look
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.size_hint_y = None
-        self.height = dp(110) # Square-ish for grid
-        self.padding = dp(10)
-        self.spacing = dp(5)
+        self.height = dp(50) # Absolute minimum height
+        self.padding = dp(2)
+        self.spacing = dp(0)
         self.elevation = 1
         self.price_lak = price_lak
         self.stock_count = stock_count
         self.quantity = 0
         self.on_qty_change = on_qty_change
 
-        # Price and Stock Info
+        # Format price as "XK ກີບ"
+        display_price = f"{int(price_lak / 1000)}K ກີບ"
+
+        # Top Row: Price and Stock
+        top_row = MDBoxLayout(orientation='horizontal', size_hint_y=None, height=dp(20))
         self.price_label = MDLabel(
-            text=f"{price_lak:,.0f} LAK",
-            font_style="Subtitle1", bold=True,
-            halign="center", theme_text_color="Primary"
+            text=display_price,
+            font_style="Subtitle2", bold=True,
+            halign="center", theme_text_color="Primary",
+            valign="center",
+            font_name="LaoFont" if font_path else None
         )
         self.stock_label = MDLabel(
             text=f"Stock: {stock_count}",
             font_style="Caption", halign="center",
-            theme_text_color="Secondary"
+            theme_text_color="Secondary",
+            valign="center"
         )
-        self.add_widget(self.price_label)
-        self.add_widget(self.stock_label)
+        top_row.add_widget(self.price_label)
+        top_row.add_widget(self.stock_label)
+        self.add_widget(top_row)
         
-        # Quantity Controls
-        controls = MDBoxLayout(spacing=dp(2), pos_hint={"center_x": .5}, adaptive_width=True)
+        # Bottom Row: Quantity Controls
+        controls = MDBoxLayout(spacing=dp(5), pos_hint={"center_x": .5}, adaptive_width=True, size_hint_y=None, height=dp(25))
         
         btn_minus = MDIconButton(
             icon="minus-circle", icon_size=dp(20),
             theme_text_color="Custom", text_color=(1, 0, 0, 1),
-            on_release=self.decrease
+            on_release=self.decrease,
+            pos_hint={'center_y': .5}
         )
         
         self.qty_label = MDLabel(
-            text="0", halign="center", font_style="Subtitle1",
-            width=dp(25), size_hint_x=None
+            text="0", halign="center", font_style="Body1", bold=True,
+            width=dp(25), size_hint_x=None,
+            valign="center"
         )
         
         btn_plus = MDIconButton(
             icon="plus-circle", icon_size=dp(20),
             theme_text_color="Custom", text_color=(0, 0.6, 0, 1),
-            on_release=self.increase
+            on_release=self.increase,
+            pos_hint={'center_y': .5}
         )
         
         controls.add_widget(btn_minus)
@@ -1038,10 +1049,9 @@ class RecycleScreen(MDScreen):
         )
         config_card.add_widget(self.price_spinner)
         
-        # Limit
-        config_card.add_widget(MDLabel(text="ຈຳນວນທີ່ຕ້ອງການເຮັດ (Max 60 ID)", font_style="Caption", font_name="LaoFont" if os.path.exists(font_path) else None))
+        config_card.add_widget(MDLabel(text="ຈຳນວນທີ່ຕ້ອງການເຮັດ (Max 100 ID)", font_style="Caption", font_name="LaoFont" if os.path.exists(font_path) else None))
         self.limit_field = MDTextField(
-            text="30",
+            text="100",
             mode="rectangle",
             size_hint_y=None, height=dp(35),
             input_filter="int"
@@ -1191,7 +1201,7 @@ class RecycleScreen(MDScreen):
         limit = self.limit_field.text or "10"
         try:
             limit = int(limit)
-            if limit > 60: limit = 60
+            if limit > 100: limit = 100
             if limit < 1: limit = 1
         except:
             limit = 10
@@ -1211,13 +1221,14 @@ class RecycleScreen(MDScreen):
             }
             resp = requests.post(f"{base_url}/api/v1/recycle-start/", data=payload, headers=headers, timeout=120) # บอทอาจใช้นาน
             if resp.status_code == 200:
-                self.refresh_data()
+                Clock.schedule_once(lambda dt: self.refresh_data())
             else:
                 err = resp.json().get('error', 'Unknown Error')
-                Clock.schedule_once(lambda dt: MDApp.get_running_app().show_error_dialog(f"Error: {err}"))
+                Clock.schedule_once(lambda dt, msg=err: MDApp.get_running_app().show_error_dialog(f"Error: {msg}"))
         except Exception as e:
-            print(f"Start bot error: {e}")
-            Clock.schedule_once(lambda dt: MDApp.get_running_app().show_error_dialog(f"Connection Error: {e}"))
+            err_msg = str(e)
+            print(f"Start bot error: {err_msg}")
+            Clock.schedule_once(lambda dt, msg=err_msg: MDApp.get_running_app().show_error_dialog(f"Connection Error: {msg}"))
 
     def reset_bot(self, *args):
         threading.Thread(target=self._do_reset_bot).start()
@@ -1231,7 +1242,7 @@ class RecycleScreen(MDScreen):
         try:
             resp = requests.post(f"{base_url}/api/v1/recycle-reset/", headers=headers, timeout=15)
             if resp.status_code == 200:
-                self.refresh_data()
+                Clock.schedule_once(lambda dt: self.refresh_data())
         except Exception as e:
             print(f"Reset bot error: {e}")
 
@@ -2144,15 +2155,15 @@ class DashboardScreen(MDScreen):
         # Items Grid (2 Columns)
         self.scroll = MDScrollView()
         from kivymd.uix.gridlayout import MDGridLayout
-        self.item_grid = MDGridLayout(cols=2, spacing=dp(10), padding=dp(10), size_hint_y=None)
+        self.item_grid = MDGridLayout(cols=2, spacing=dp(5), padding=dp(5), size_hint_y=None)
         self.item_grid.bind(minimum_height=self.item_grid.setter('height'))
         self.scroll.add_widget(self.item_grid)
         self.layout.add_widget(self.scroll)
         
         # Bottom Bar
         self.bottom_bar = MDCard(
-            size_hint_y=None, height=dp(100),
-            padding=dp(15), radius=[20, 20, 0, 0],
+            size_hint_y=None, height=dp(70),
+            padding=[dp(15), dp(5), dp(15), dp(5)], radius=[20, 20, 0, 0],
             elevation=12,
             md_bg_color=get_color_from_hex("#311B92")
         )
@@ -2162,24 +2173,26 @@ class DashboardScreen(MDScreen):
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
             font_name="LaoFont" if os.path.exists(font_path) else None,
-            font_style="H6"
+            font_style="Subtitle1", bold=True
         )
         
         self.clear_btn = MDIconButton(
             icon="cart-off",
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
-            on_release=self.clear_cart
+            on_release=self.clear_cart,
+            pos_hint={"center_y": .5}
         )
 
         self.print_btn = MDRaisedButton(
             text="ຕັດສະຕ໋ອກຂາຍ",
             font_name="LaoFont" if os.path.exists(font_path) else None,
             md_bg_color=(1, 0.7, 0, 1), # Amber/Orange
-            on_release=self.process_payment
+            on_release=self.process_payment,
+            pos_hint={"center_y": .5}
         )
         
-        container = MDBoxLayout(orientation='vertical', spacing=dp(5))
+        container = MDBoxLayout(orientation='vertical', spacing=dp(0))
         footer_layout = MDBoxLayout(spacing=dp(10))
         footer_layout.add_widget(self.total_label)
         footer_layout.add_widget(self.clear_btn)
@@ -2190,7 +2203,8 @@ class DashboardScreen(MDScreen):
             theme_text_color="Custom",
             text_color=(0.8, 0.8, 0.8, 1),
             font_name="LaoFont" if os.path.exists(font_path) else None,
-            font_style="Subtitle1"
+            font_style="Caption",
+            size_hint_y=None, height=dp(20)
         )
         
         container.add_widget(self.cart_info)
