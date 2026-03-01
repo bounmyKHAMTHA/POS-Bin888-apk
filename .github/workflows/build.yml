@@ -56,14 +56,7 @@ jobs:
           echo "=== bin/ contents ==="
           ls bin/ 2>/dev/null || echo "No bin/ folder"
           mkdir -p artifacts
-          # Pick the universal APK (no arm64/armeabi in filename)
-          APK=$(ls bin/*.apk 2>/dev/null | grep -v arm64 | grep -v armeabi | head -1)
-          if [ -n "$APK" ]; then
-            cp "$APK" artifacts/bin888-debug.apk
-            echo "Copied: $APK"
-          else
-            echo "WARNING: No universal APK found in bin/"
-          fi
+          cp bin/*.apk artifacts/
           ls -la artifacts/
 
       - name: Upload APK
