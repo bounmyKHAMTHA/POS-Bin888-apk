@@ -56,10 +56,14 @@ jobs:
           echo "=== bin/ contents ==="
           ls bin/ 2>/dev/null || echo "No bin/ folder"
           mkdir -p artifacts
-          # Only copy from ./bin/ - Buildozer always puts the universal APK here
-          cp bin/bin888-debug.apk artifacts/ 2>/dev/null || \
-          cp bin/*.apk artifacts/ 2>/dev/null || \
-          echo "WARNING: No APK found in bin/"
+          # Pick the universal APK (no arm64/armeabi in filename)
+          APK=$(ls bin/*.apk 2>/dev/null | grep -v arm64 | grep -v armeabi | head -1)
+          if [ -n "$APK" ]; then
+            cp "$APK" artifacts/bin888-debug.apk
+            echo "Copied: $APK"
+          else
+            echo "WARNING: No universal APK found in bin/"
+          fi
           ls -la artifacts/
 
       - name: Upload APK
