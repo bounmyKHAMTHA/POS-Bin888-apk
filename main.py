@@ -745,20 +745,54 @@ class VoucherScreen(MDScreen):
         threading.Thread(target=run, daemon=True).start()
 
     def print_action(self, *args):
-        """Handle print button - request permissions then show printer picker."""
+        """Handle print button - ALWAYS check permissions first, then connect or scan."""
         from kivy.utils import platform
         if platform != 'android':
             Snackbar(MDLabel(text="Bluetooth printing is only supported on Android", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
             return
-            
+        
+        # Always go through permission check - whether connecting saved or scanning
+        self._check_bt_permissions_then(self._connect_saved_or_scan)
+
+    def _connect_saved_or_scan(self):
+        """Called after permissions are confirmed. Connect to saved printer or show scanner."""
         app = MDApp.get_running_app()
         saved_mac = app.config_data.get('selected_printer_mac')
         saved_name = app.config_data.get('selected_printer_name', 'Printer')
-
         if saved_mac:
             self._print_via_socket(saved_mac, saved_name)
         else:
-            self.request_bt_permissions_and_scan()
+            self.scan_and_pick_printer()
+
+    def _check_bt_permissions_then(self, callback):
+        """Check/request Bluetooth permissions, then call callback when granted."""
+        try:
+            from android.permissions import request_permissions, check_permission
+            from jnius import autoclass
+            Build = autoclass('android.os.Build$VERSION')
+            
+            if Build.SDK_INT >= 31:
+                perms = ['android.permission.BLUETOOTH_CONNECT', 'android.permission.BLUETOOTH_SCAN']
+            else:
+                perms = ['android.permission.BLUETOOTH', 'android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION']
+            
+            needs_request = any(not check_permission(p) for p in perms)
+            
+            if needs_request:
+                def on_result(permissions, grants):
+                    from kivy.clock import Clock
+                    if all(grants):
+                        Clock.schedule_once(lambda dt: callback(), 1.0)
+                    else:
+                        from kivymd.app import MDApp as App
+                        Clock.schedule_once(lambda dt: App.get_running_app().show_error_dialog("Bluetooth permission denied."), 0.5)
+                request_permissions(perms, on_result)
+                return
+        except Exception as e:
+            print(f"Permission check error: {e}")
+        
+        # Permissions already granted (or non-android fallback)
+        callback()
 
     def request_bt_permissions_and_scan(self):
         from kivy.utils import platform
