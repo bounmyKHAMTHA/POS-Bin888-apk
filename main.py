@@ -463,24 +463,35 @@ class VoucherScreen(MDScreen):
                 from kivy.core.text import Label as KivyLabel
                 from kivy.core.text import LabelBase
                 import os
+                
                 font_name = "Roboto"
-                if os.path.exists(font_path):
-                    if "LaoFont" not in LabelBase.get_ext_fonts():
-                        LabelBase.register(name="LaoFont", fn_regular=font_path)
+                global font_path 
+                
+                if font_path and os.path.exists(font_path):
                     font_name = "LaoFont"
                     
+                # ให้สีข้อความเป็นสีดำ (0,0,0,1)
                 lbl = KivyLabel(text=str(text), font_name=font_name, font_size=font_size, color=(0,0,0,1))
                 lbl.refresh()
+                
                 if not lbl.texture:
                     return None
                     
                 from PIL import Image as PILImage
                 from PIL import ImageOps
                 tex = lbl.texture
+                
+                # แปลง texture เป็นภาพ RGBA
                 img_tex = PILImage.frombytes('RGBA', tex.size, tex.pixels)
-                # Kivy textures are stored bottom-up
                 img_tex = ImageOps.flip(img_tex)
-                return img_tex
+                
+                # ---> สร้างภาพพื้นหลังสีขาว แล้วแปะข้อความลงไป <---
+                bg = PILImage.new('RGBA', img_tex.size, (255, 255, 255, 255))
+                bg.paste(img_tex, (0, 0), img_tex) 
+                
+                # แปลงกลับเป็นสีขาวดำ (1-bit pixels, black and white)
+                return bg.convert('1')
+                
             except Exception as e:
                 print(f"Lao render error: {e}")
                 return None
@@ -489,7 +500,8 @@ class VoucherScreen(MDScreen):
             pil_txt = render_lao_text_to_pil(text, font_size)
             if pil_txt:
                 tw, th = pil_txt.size
-                img.paste(0, ((img_w - tw) // 2, y_pos), pil_txt.split()[3])
+                # แปะภาพขาวดำลงไปตรงๆ (ไม่ต้องมี .split()[3] แล้ว)
+                img.paste(pil_txt, ((img_w - tw) // 2, y_pos))
                 return y_pos + th + 10
             return y_pos + 30
 
@@ -498,11 +510,11 @@ class VoucherScreen(MDScreen):
             pil_val = render_lao_text_to_pil(value, font_size)
             th = 0
             if pil_lbl:
-                img.paste(0, (10, y_pos), pil_lbl.split()[3])
+                img.paste(pil_lbl, (10, y_pos))
                 th = max(th, pil_lbl.size[1])
             if pil_val:
                 tw, vh = pil_val.size
-                img.paste(0, (img_w - 10 - tw, y_pos), pil_val.split()[3])
+                img.paste(pil_val, (img_w - 10 - tw, y_pos))
                 th = max(th, vh)
             return y_pos + th + 10
 
@@ -553,7 +565,7 @@ class VoucherScreen(MDScreen):
                 bw = tw + 40
                 bh = th + 25
                 draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
-                img.paste(0, ((img_w - tw) // 2, y + 5), pil_pw.split()[3])
+                img.paste(pil_pw, ((img_w - tw) // 2, y + 5))
                 y += bh + 25
             else:
                 y += 50
@@ -591,7 +603,7 @@ class VoucherScreen(MDScreen):
         return img
 
     def _print_via_socket(self, mac, name):
-        """Connect and print using PROVEN Android JNI UUID method from test app."""
+        """Connect and print using PROVEN Android JNI UUID method."""
         import threading
         from kivy.clock import Clock
         
@@ -610,29 +622,54 @@ class VoucherScreen(MDScreen):
                 
                 adapter = BluetoothAdapter.getDefaultAdapter()
                 adapter.cancelDiscovery()  # CRITICAL for stability
+                
+                # หน่วงเวลาให้ Bluetooth เลิกค้นหาให้สนิทก่อน
+                import time
+                time.sleep(0.5)
 
                 device = adapter.getRemoteDevice(mac)
                 serial_uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
                 
+                # ==========================================
+                # 🚀 LOGIC การเชื่อมต่อ 3 ระดับ (ปราบเครื่องพิมพ์ดื้อ)
+                # ==========================================
+                connected = False
+                
+                # ลองแบบที่ 1: Insecure Connection
                 try:
                     bt_socket = device.createInsecureRfcommSocketToServiceRecord(serial_uuid)
                     bt_socket.connect()
-                except Exception as e_sock:
-                    print(f"Standard BT connect failed: {e_sock}, trying fallback (Reflection)...")
-                    # Fallback to Port 1 via Reflection
-                    socket_method = device.getClass().getMethod("createRfcommSocket", [autoclass('java.lang.Integer').TYPE])
-                    bt_socket = socket_method.invoke(device, [1])
-                    bt_socket.connect()
-                    print("Connected via Reflection fallback!")
+                    connected = True
+                except Exception as e1:
+                    print(f"Insecure connect failed: {e1}")
+                    # ลองแบบที่ 2: Secure Connection
+                    try:
+                        bt_socket = device.createRfcommSocketToServiceRecord(serial_uuid)
+                        bt_socket.connect()
+                        connected = True
+                    except Exception as e2:
+                        print(f"Secure connect failed: {e2}")
+                        # ลองแบบที่ 3: บังคับเชื่อมต่อ Port 1 (ทะลวงกำแพง JVM Exception)
+                        try:
+                            j_int = autoclass('java.lang.Integer').TYPE
+                            method = device.getClass().getMethod("createRfcommSocket", j_int)
+                            bt_socket = method.invoke(device, 1)
+                            bt_socket.connect()
+                            connected = True
+                        except Exception as e3:
+                            print(f"Reflection connect failed: {e3}")
                 
+                if not connected:
+                    raise Exception("ไม่สามารถເຊື່ອມຕໍ່ໄດ້ (Printer might be off or busy)")
+
                 ostream = bt_socket.getOutputStream()
                 
                 # ========================================
                 # 1. GENERATE RECEIPT IMAGE VIA PILLOW
                 # ========================================
+                # (ใช้โค้ดสร้างภาพ PIL เดิมของคุณตั้งแต่บรรทัดนี้ไป...)
                 from PIL import Image
                 
-                # Fetch full data
                 pt_thb = getattr(self, '_print_total_thb', 0)
                 pt_bonus = getattr(self, '_print_total_bonus', 0)
                 pt_rec = getattr(self, '_print_received', 0)
@@ -645,7 +682,7 @@ class VoucherScreen(MDScreen):
                 img = self.generate_receipt_image(
                     shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate
                 )
-                
+
                 # ========================================
                 # 2. CONVERT PILLOW IMAGE TO ESC/POS RASTER IN SLICES
                 # ========================================
@@ -657,8 +694,6 @@ class VoucherScreen(MDScreen):
                     img = new_img
                     w = pad_w
                     
-                import time
-                
                 init_cmd = bytearray([0x1B, 0x40]) # Init
                 try:
                     ostream.write(bytes(init_cmd))
@@ -708,7 +743,7 @@ class VoucherScreen(MDScreen):
                 ostream.flush()
                 bt_socket.close()
                 
-                Clock.schedule_once(lambda dt: Snackbar(MDLabel(text="\u2713 Print OK! (Check printer)", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open(), 0)
+                Clock.schedule_once(lambda dt: Snackbar(MDLabel(text="\u2713 ພິມສຳເລັດ! (Print OK)", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open(), 0)
             except Exception as e:
                 err = str(e)
                 if bt_socket:
@@ -735,27 +770,42 @@ class VoucherScreen(MDScreen):
             self.request_bt_permissions_and_scan()
 
     def request_bt_permissions_and_scan(self):
+        from kivy.utils import platform
+        if platform != 'android':
+            self.scan_and_pick_printer()
+            return
+
         try:
-            from android.permissions import request_permissions, check_permission, Permission
+            from android.permissions import request_permissions, check_permission
             from jnius import autoclass
             Build = autoclass('android.os.Build$VERSION')
             
             if Build.SDK_INT >= 31:
-                perms = [Permission.BLUETOOTH_CONNECT, Permission.BLUETOOTH_SCAN]
+                perms = ['android.permission.BLUETOOTH_CONNECT', 'android.permission.BLUETOOTH_SCAN']
             else:
-                perms = [Permission.BLUETOOTH, Permission.ACCESS_FINE_LOCATION, Permission.ACCESS_COARSE_LOCATION]
+                perms = ['android.permission.BLUETOOTH', 'android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION']
                 
-            if not all(check_permission(p) for p in perms):
+            needs_request = False
+            for p in perms:
+                if not check_permission(p):
+                    needs_request = True
+                    break
+                    
+            if needs_request:
                 def on_permission_result(permissions, grants):
+                    from kivy.clock import Clock
                     if all(grants):
-                        from kivy.clock import Clock
-                        Clock.schedule_once(lambda dt: self.scan_and_pick_printer(), 0.5)
+                        # หน่วงเวลา 1 วินาที เพื่อให้กราฟิกแอปฟื้นตัว ป้องกันแอปเด้ง!
+                        Clock.schedule_once(lambda dt: self.scan_and_pick_printer(), 1.0)
                     else:
-                        Snackbar(MDLabel(text="Bluetooth permission denied.", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
+                        from kivymd.app import MDApp
+                        Clock.schedule_once(lambda dt: MDApp.get_running_app().show_error_dialog("Bluetooth permission denied."), 0.5)
+                
                 request_permissions(perms, on_permission_result)
                 return
-        except ImportError:
-            pass  
+                
+        except Exception as e:
+            print(f"Permission Error: {e}")
 
         self.scan_and_pick_printer()
 
