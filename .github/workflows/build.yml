@@ -53,10 +53,13 @@ jobs:
 
       - name: Collect APK
         run: |
-          echo "=== Searching for APK ==="
-          find . -name "*.apk" 2>/dev/null
+          echo "=== bin/ contents ==="
+          ls bin/ 2>/dev/null || echo "No bin/ folder"
           mkdir -p artifacts
-          find . -name "*.apk" -exec cp {} artifacts/ \;
+          # Only copy from ./bin/ - Buildozer always puts the universal APK here
+          cp bin/bin888-debug.apk artifacts/ 2>/dev/null || \
+          cp bin/*.apk artifacts/ 2>/dev/null || \
+          echo "WARNING: No APK found in bin/"
           ls -la artifacts/
 
       - name: Upload APK
