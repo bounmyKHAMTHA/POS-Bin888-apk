@@ -452,16 +452,16 @@ class VoucherScreen(MDScreen):
         from PIL import Image, ImageDraw
         global font_path
         
-        img_w = 384 # 58mm printer width
-        # Estimate height based on dynamic content length + 200 padding at the end
-        height = 250 + (len(items) * 200) + 300 + 200
-        img = Image.new('1', (img_w, height), 1)
+        img_w = 384
+        # FIX: Make initial canvas huge and use 255 (white) to prevent black boxes
+        height = 4000 
+        img = Image.new('1', (img_w, height), 255) 
         draw = ImageDraw.Draw(img)
         
         def render_lao_text_to_pil(text, font_size):
             try:
                 from kivy.core.text import Label as KivyLabel
-                from kivy.core.text import LabelBase
+                from PIL import Image as PILImage
                 import os
                 
                 font_name = "Roboto"
@@ -470,28 +470,16 @@ class VoucherScreen(MDScreen):
                 if font_path and os.path.exists(font_path):
                     font_name = "LaoFont"
                     
-                # ให้สีข้อความเป็นสีดำ (0,0,0,1)
                 lbl = KivyLabel(text=str(text), font_name=font_name, font_size=font_size, color=(0,0,0,1))
                 lbl.refresh()
-                
-                if not lbl.texture:
-                    return None
+                if not lbl.texture: return None
                     
-                from PIL import Image as PILImage
-                from PIL import ImageOps
                 tex = lbl.texture
-                
-                # แปลง texture เป็นภาพ RGBA
                 img_tex = PILImage.frombytes('RGBA', tex.size, tex.pixels)
-                img_tex = ImageOps.flip(img_tex)
                 
-                # ---> สร้างภาพพื้นหลังสีขาว แล้วแปะข้อความลงไป <---
                 bg = PILImage.new('RGBA', img_tex.size, (255, 255, 255, 255))
                 bg.paste(img_tex, (0, 0), img_tex) 
-                
-                # แปลงกลับเป็นสีขาวดำ (1-bit pixels, black and white)
                 return bg.convert('1')
-                
             except Exception as e:
                 print(f"Lao render error: {e}")
                 return None
@@ -500,10 +488,9 @@ class VoucherScreen(MDScreen):
             pil_txt = render_lao_text_to_pil(text, font_size)
             if pil_txt:
                 tw, th = pil_txt.size
-                # แปะภาพขาวดำลงไปตรงๆ (ไม่ต้องมี .split()[3] แล้ว)
                 img.paste(pil_txt, ((img_w - tw) // 2, y_pos))
-                return y_pos + th + 10
-            return y_pos + 30
+                return y_pos + th + 1
+            return y_pos + 15
 
         def draw_row(label, value, y_pos, font_size):
             pil_lbl = render_lao_text_to_pil(label, font_size)
@@ -516,18 +503,18 @@ class VoucherScreen(MDScreen):
                 tw, vh = pil_val.size
                 img.paste(pil_val, (img_w - 10 - tw, y_pos))
                 th = max(th, vh)
-            return y_pos + th + 10
+            return y_pos + th + 1
 
-        y = 10
+        y = 2
         
         # 1. Header (Shop, Phone)
-        y = draw_center(shop_name, y, 28)
-        y = draw_center(f"Phone: {pt_phone}", y, 24)
-        y += 10
+        y = draw_center(shop_name, y, 26)
+        y = draw_center(f"Phone: {pt_phone}", y, 22)
+        y += 2
         
         # 2. Items
         draw.line((10, y, img_w-10, y), fill=0, width=1)
-        y += 15
+        y += 4
         
         for item in items:
             item_lad = float(item.get('lad', pt_rate))
@@ -551,53 +538,53 @@ class VoucherScreen(MDScreen):
             
             bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
             sub_text = f"{price_lak:,.0f} ກີບ / {price_thb:,.2f} THB{bonus_text}"
-            y = draw_center(sub_text, y, 20) + 15
+            y = draw_center(sub_text, y, 20) + 2
             
             # PIN Outline Box
-            y = draw_center("PIN CODE / REDEEM CODE", y, 20) + 5
+            y = draw_center("PIN CODE / REDEEM CODE", y, 20) + 2
             pw_str = str(item.get('pw', 'N/A'))
             
             pil_pw = render_lao_text_to_pil(pw_str, 34)
             if pil_pw:
                 tw, th = pil_pw.size
-                bx = (img_w - tw) // 2 - 20
+                bx = (img_w - tw) // 2 - 8
                 by = y
-                bw = tw + 40
-                bh = th + 25
+                bw = tw + 16
+                bh = th + 6
                 draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
-                img.paste(pil_pw, ((img_w - tw) // 2, y + 5))
-                y += bh + 25
+                img.paste(pil_pw, ((img_w - tw) // 2, y + 3))
+                y += bh + 4
             else:
-                y += 50
+                y += 20
             
             # Bottom Demarcation
             draw.line((10, y, img_w-10, y), fill=0, width=1)
-            y += 15
+            y += 4
         
         # 3. Summary
-        y = draw_row("Total LAK:", f"{total_lak:,.0f} LAK", y, 24)
-        y = draw_row("Total THB:", f"{pt_thb:,.2f} THB", y, 24)
+        y = draw_row("Total LAK:", f"{total_lak:,.0f} LAK", y, 20)
+        y = draw_row("Total THB:", f"{pt_thb:,.2f} THB", y, 20)
         if pt_bonus > 0:
-            y = draw_row("Total Bonus:", f"+ {pt_bonus:,.2f} THB", y, 24)
+            y = draw_row("Total Bonus:", f"+ {pt_bonus:,.2f} THB", y, 20)
         
-        y += 10
+        y += 2
         draw.line((10, y, img_w-10, y), fill=0, width=1)
-        y += 10
+        y += 2
         
-        y = draw_row("Received:", f"{pt_rec:,.0f} LAK", y, 24)
-        y = draw_row("Change:", f"{pt_chg:,.0f} LAK", y, 28) + 20
+        y = draw_row("Received:", f"{pt_rec:,.0f} LAK", y, 20)
+        y = draw_row("Change:", f"{pt_chg:,.0f} LAK", y, 20) + 4
         
         # 4. Footer
         footer1 = "*** ທຸກບິນທີ່ຂາຍໄປຢູ່ໄດ້ບໍ່ເກີນ 3 ວັນຈະໝົດອາຍຸ"
         footer2 = "ຫາກໝົດອາຍຸແລ້ວຕິດຕໍ່ຮ້ານຄ້າເພື່ອແກ້ໄຂ ***"
         footer3 = "ຂອບໃຈທີ່ໃຊ້ບໍລິການ / Thank You!"
         
-        y = draw_center(footer1, y, 20)
-        y = draw_center(footer2, y, 20) + 10
-        y = draw_center(footer3, y, 20)
+        y = draw_center(footer1, y, 18)
+        y = draw_center(footer2, y, 18) + 2
+        y = draw_center(footer3, y, 18)
         
-        # EXTRA PADDING AT THE BOTTOM (1-2 lines for tearing)
-        y += 150 
+        # Minimal tear padding
+        y += 30 
         
         img = img.crop((0, 0, img_w, y))
         return img
@@ -621,11 +608,15 @@ class VoucherScreen(MDScreen):
                 UUID = autoclass('java.util.UUID')
                 
                 adapter = BluetoothAdapter.getDefaultAdapter()
-                adapter.cancelDiscovery()  # CRITICAL for stability
+                # FIX: Prevent crash if cancelDiscovery fails on Android 12+
+                try:
+                    adapter.cancelDiscovery()  
+                except Exception as e:
+                    print(f"cancelDiscovery error (ignoring): {e}")
                 
-                # หน่วงเวลาให้ Bluetooth เลิกค้นหาให้สนิทก่อน
+                # FIX: Give printer more time to stabilize
                 import time
-                time.sleep(0.5)
+                time.sleep(1.0)
 
                 device = adapter.getRemoteDevice(mac)
                 serial_uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
@@ -689,7 +680,7 @@ class VoucherScreen(MDScreen):
                 w, h = img.size
                 pad_w = ((w + 7) // 8) * 8
                 if pad_w != w:
-                    new_img = Image.new('1', (pad_w, h), 1)
+                    new_img = Image.new('1', (pad_w, h), 255) # FIXED: 255 is white
                     new_img.paste(img, (0,0))
                     img = new_img
                     w = pad_w
@@ -1582,8 +1573,8 @@ class OrdersScreen(MDScreen):
             title=f"ບິນທີ #{order['id']}",
             text=detail_text,
             buttons=[
+                MDFlatButton(text="CLOSE", on_release=lambda x: self.detail_dialog.dismiss()),
                 MDFlatButton(text="REPRINT", theme_text_color="Primary", on_release=lambda x: self.reprint_order(order)),
-                MDFlatButton(text="CLOSE", on_release=lambda x: self.detail_dialog.dismiss())
             ]
         )
         self.detail_dialog.open()
