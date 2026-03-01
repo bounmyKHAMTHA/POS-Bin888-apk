@@ -601,8 +601,8 @@ class VoucherScreen(MDScreen):
         y = draw_center(footer2, y, 18) + 2
         y = draw_center(footer3, y, 18)
         
-        # Minimal tear padding
-        y += 30 
+        # Minimal tear padding (1 line worth)
+        y += 10 
         
         img = img.crop((0, 0, img_w, y))
         return img
@@ -727,10 +727,10 @@ class VoucherScreen(MDScreen):
                     except Exception:
                         for b in receipt: ostream.write(b)
                     ostream.flush()
-                    time.sleep(0.15) # Small sleep to give printer time to burn and feed graphics
+                    time.sleep(0.05) # Reduced delay for faster printing
 
-                # Feed lines at the end
-                feed_cmd = bytearray([0x0A, 0x0A, 0x0A, 0x0A])
+                # Feed 2 lines at the end (1 blank line)
+                feed_cmd = bytearray([0x0A, 0x0A])
                 try:
                     ostream.write(bytes(feed_cmd))
                 except Exception:
