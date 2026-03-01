@@ -327,37 +327,52 @@ class VoucherScreen(MDScreen):
             actual_rate = items[0]['lad']
         self._print_exchange_rate = float(actual_rate)
         
-        # Generation Step (Replace Kivy UI with real Receipt Image)
-        img = self.generate_receipt_image(
-            shop_name=self._print_shop_name,
-            items=self._print_items,
-            total_lak=self._print_total_lak,
-            pt_thb=self._print_total_thb,
-            pt_bonus=self._print_total_bonus,
-            pt_rec=self._print_received,
-            pt_chg=self._print_change,
-            pt_sid=self._print_sale_id,
-            pt_date=self._print_date,
-            pt_phone=self._print_phone,
-            pt_rate=self._print_exchange_rate
-        )
-        
-        import os
-        import tempfile
-        preview_path = os.path.join(tempfile.gettempdir(), "receipt_preview.png")
-        img.save(preview_path)
-        
-        # Clear items container
-        self.preview_container.clear_widgets()
-        
+        import os, tempfile
+        from kivy.clock import Clock
         from kivy.uix.image import Image as KivyImage
-        self.preview_container.add_widget(KivyImage(
-            source=preview_path,
-            allow_stretch=True,
-            keep_ratio=True,
+
+        # Show loading label immediately so screen appears before the slow render
+        self.preview_container.clear_widgets()
+        self.preview_container.add_widget(MDLabel(
+            text="ກຳລັງສ້າງໃບບິນ...",
+            halign="center",
             size_hint_y=None,
-            height=dp(min(img.height // 1.5, 1200)) # Adjust height dynamically
+            height=dp(60)
         ))
+        self._cached_receipt_img = None  # reset cache
+
+        # Schedule image generation on next frame (after UI shows loading)
+        # KivyLabel MUST run on main thread — Clock keeps it there
+        def _generate(dt):
+            try:
+                img = self.generate_receipt_image(
+                    shop_name=self._print_shop_name,
+                    items=self._print_items,
+                    total_lak=self._print_total_lak,
+                    pt_thb=self._print_total_thb,
+                    pt_bonus=self._print_total_bonus,
+                    pt_rec=self._print_received,
+                    pt_chg=self._print_change,
+                    pt_sid=self._print_sale_id,
+                    pt_date=self._print_date,
+                    pt_phone=self._print_phone,
+                    pt_rate=self._print_exchange_rate
+                )
+                self._cached_receipt_img = img
+                preview_path = os.path.join(tempfile.gettempdir(), "receipt_preview.png")
+                img.save(preview_path)
+                self.preview_container.clear_widgets()
+                self.preview_container.add_widget(KivyImage(
+                    source=preview_path,
+                    allow_stretch=True,
+                    keep_ratio=True,
+                    size_hint_y=None,
+                    height=dp(min(img.height // 1.5, 1200))
+                ))
+            except Exception as e:
+                print(f"Receipt render error: {e}")
+
+        Clock.schedule_once(_generate, 0.1)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -729,8 +744,8 @@ class VoucherScreen(MDScreen):
                     ostream.flush()
                     time.sleep(0.05) # Reduced delay for faster printing
 
-                # Feed 2 lines at the end (1 blank line)
-                feed_cmd = bytearray([0x0A, 0x0A])
+                # Feed 4 lines at the end for easy tearing
+                feed_cmd = bytearray([0x0A, 0x0A, 0x0A, 0x0A])
                 try:
                     ostream.write(bytes(feed_cmd))
                 except Exception:
@@ -1059,19 +1074,45 @@ class RecycleScreen(MDScreen):
         
         layout.add_widget(content)
         self.add_widget(layout)
-        
+        self._init_loading_overlay()
+
+    def _init_loading_overlay(self):
+        from kivymd.uix.spinner import MDSpinner
+        from kivy.uix.modalview import ModalView
+        from kivy.uix.anchorlayout import AnchorLayout
+        modal = ModalView(
+            background_color=[1, 1, 1, 0.6],
+            overlay_color=[0, 0, 0, 0],
+            auto_dismiss=False,
+            size_hint=(1, 1)
+        )
+        anchor = AnchorLayout(anchor_x='center', anchor_y='center')
+        anchor.add_widget(MDSpinner(
+            size_hint=(None, None), size=(dp(48), dp(48)),
+            active=True
+        ))
+        modal.add_widget(anchor)
+        self._loading_modal = modal
+
+    def show_loading(self): self._loading_modal.open()
+    def hide_loading(self):
+        if self._loading_modal.parent:
+            self._loading_modal.dismiss()
+
     def create_stat_card(self, title, value, color):
         # Helper to avoid repetitive code if needed, but I already wrote them above
         pass
 
     def on_enter(self):
+        self.show_loading()
         self.refresh_data()
 
     def go_back(self):
         self.manager.current = 'dashboard_screen'
 
     def refresh_data(self):
-        threading.Thread(target=self._fetch_recycle_data).start()
+        self.show_loading()
+        threading.Thread(target=self._fetch_recycle_data, daemon=True).start()
 
     def _fetch_recycle_data(self):
         app = MDApp.get_running_app()
@@ -1097,6 +1138,8 @@ class RecycleScreen(MDScreen):
                 Clock.schedule_once(lambda dt: self.update_logs_ui(logs_data))
         except Exception as e:
             print(f"Recycle fetch error: {e}")
+        finally:
+            Clock.schedule_once(lambda dt: self.hide_loading(), 0)
 
     def update_status_ui(self, data):
         self.waiting_card_label.text = str(data.get('waiting_count', 0))
@@ -1359,13 +1402,33 @@ class DataScreen(MDScreen):
         self.all_bins = []
         self.current_page = 1
         self.total_pages = 1
+        self._init_loading_overlay()
+
+    def _init_loading_overlay(self):
+        from kivymd.uix.spinner import MDSpinner
+        from kivy.uix.modalview import ModalView
+        from kivy.uix.anchorlayout import AnchorLayout
+        modal = ModalView(background_color=[1,1,1,0.6], overlay_color=[0,0,0,0], auto_dismiss=False, size_hint=(1,1))
+        anchor = AnchorLayout(anchor_x='center', anchor_y='center')
+        anchor.add_widget(MDSpinner(size_hint=(None,None), size=(dp(48),dp(48)), active=True))
+        modal.add_widget(anchor)
+        self._loading_modal = modal
+
+    def show_loading(self): self._loading_modal.open()
+    def hide_loading(self):
+        if self._loading_modal.parent: self._loading_modal.dismiss()
+
+    def on_enter(self):
+        self.show_loading()
+        self.refresh_data()
 
     def back_to_home(self):
         self.manager.current = 'dashboard_screen'
 
     def refresh_data(self):
         self.current_page = 1
-        threading.Thread(target=self._fetch_bins_list, args=(1, self.search_field.text)).start()
+        self.show_loading()
+        threading.Thread(target=self._fetch_bins_list, args=(1, self.search_field.text), daemon=True).start()
 
     def load_more(self, *args):
         if self.current_page < self.total_pages:
@@ -1377,7 +1440,6 @@ class DataScreen(MDScreen):
         token = app.config_data.get('token')
         headers = {'Authorization': f'Token {token}', 'X-App-Access-Key': app.APP_KEY, 'X-App-Version': app.APP_VERSION}
         try:
-            # Use imported-data endpoint to see both sold and unsold items
             url = f"{app.base_url}/api/v1/imported-data/?page={page}&q={query}"
             resp = requests.get(url, headers=headers, timeout=10)
             if resp.status_code == 200:
@@ -1385,6 +1447,8 @@ class DataScreen(MDScreen):
                 Clock.schedule_once(lambda dt: self.update_ui(data, append=(page > 1)))
         except Exception as e:
             print(f"Fetch bins error: {e}")
+        finally:
+            Clock.schedule_once(lambda dt: self.hide_loading(), 0)
 
     def on_search(self, instance):
         self.refresh_data()
@@ -1556,13 +1620,33 @@ class OrdersScreen(MDScreen):
         self.add_widget(self.layout)
         self.current_page = 1
         self.total_pages = 1
+        self._init_loading_overlay()
+
+    def _init_loading_overlay(self):
+        from kivymd.uix.spinner import MDSpinner
+        from kivy.uix.modalview import ModalView
+        from kivy.uix.anchorlayout import AnchorLayout
+        modal = ModalView(background_color=[1,1,1,0.6], overlay_color=[0,0,0,0], auto_dismiss=False, size_hint=(1,1))
+        anchor = AnchorLayout(anchor_x='center', anchor_y='center')
+        anchor.add_widget(MDSpinner(size_hint=(None,None), size=(dp(48),dp(48)), active=True))
+        modal.add_widget(anchor)
+        self._loading_modal = modal
+
+    def show_loading(self): self._loading_modal.open()
+    def hide_loading(self):
+        if self._loading_modal.parent: self._loading_modal.dismiss()
+
+    def on_enter(self):
+        self.show_loading()
+        self.refresh_data()
 
     def back_to_home(self):
         self.manager.current = 'dashboard_screen'
 
     def refresh_data(self):
         self.current_page = 1
-        threading.Thread(target=self._fetch_orders, args=(1,)).start()
+        self.show_loading()
+        threading.Thread(target=self._fetch_orders, args=(1,), daemon=True).start()
 
     def load_more(self, *args):
         if self.current_page < self.total_pages:
@@ -1578,7 +1662,10 @@ class OrdersScreen(MDScreen):
             if resp.status_code == 200:
                 data = resp.json()
                 Clock.schedule_once(lambda dt: self.update_ui(data, append=(page > 1)))
-        except Exception as e: print(f"Orders fetch error: {e}")
+        except Exception as e:
+            print(f"Orders fetch error: {e}")
+        finally:
+            Clock.schedule_once(lambda dt: self.hide_loading(), 0)
 
     def update_ui(self, data, append=False):
         if not append:
@@ -1721,12 +1808,32 @@ class SummaryScreen(MDScreen):
         self.scroll.add_widget(self.content)
         self.layout.add_widget(self.scroll)
         self.add_widget(self.layout)
+        self._init_loading_overlay()
+
+    def _init_loading_overlay(self):
+        from kivymd.uix.spinner import MDSpinner
+        from kivy.uix.modalview import ModalView
+        from kivy.uix.anchorlayout import AnchorLayout
+        modal = ModalView(background_color=[1,1,1,0.6], overlay_color=[0,0,0,0], auto_dismiss=False, size_hint=(1,1))
+        anchor = AnchorLayout(anchor_x='center', anchor_y='center')
+        anchor.add_widget(MDSpinner(size_hint=(None,None), size=(dp(48),dp(48)), active=True))
+        modal.add_widget(anchor)
+        self._loading_modal = modal
+
+    def show_loading(self): self._loading_modal.open()
+    def hide_loading(self):
+        if self._loading_modal.parent: self._loading_modal.dismiss()
+
+    def on_enter(self):
+        self.show_loading()
+        self.refresh_data()
 
     def back_to_home(self):
         self.manager.current = 'dashboard_screen'
 
     def refresh_data(self):
-        threading.Thread(target=self._fetch_summary).start()
+        self.show_loading()
+        threading.Thread(target=self._fetch_summary, daemon=True).start()
 
     def _fetch_summary(self):
         app = MDApp.get_running_app()
@@ -1737,7 +1844,10 @@ class SummaryScreen(MDScreen):
             if resp.status_code == 200:
                 data = resp.json()
                 Clock.schedule_once(lambda dt: self.update_ui(data))
-        except Exception as e: print(f"Summary fetch error: {e}")
+        except Exception as e:
+            print(f"Summary fetch error: {e}")
+        finally:
+            Clock.schedule_once(lambda dt: self.hide_loading(), 0)
 
     def update_ui(self, data):
         daily_stats = data.get('daily_stats', [])
@@ -1965,7 +2075,15 @@ class DashboardScreen(MDScreen):
         config = MDApp.get_running_app().config_data
         shop_name = config.get('shop_name', 'Bin888 Shop')
         self.toolbar.title = shop_name
-        self.fetch_bins()
+        
+        if self.grouped_data:
+            # Show cached data immediately (Stale-While-Revalidate)
+            # Then silently refresh in background without blocking UI
+            threading.Thread(target=self.fetch_bins, daemon=True).start()
+        else:
+            # First load — show spinner while waiting
+            self.show_loading()
+            threading.Thread(target=self.fetch_bins, daemon=True).start()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1987,7 +2105,7 @@ class DashboardScreen(MDScreen):
             left_action_items=[["menu", lambda x: self.nav_drawer.set_state("open")]],
             right_action_items=[
                 ["magnify", lambda x: self.toggle_search()],
-                ["refresh", lambda x: self.fetch_bins()],
+                ["refresh", lambda x: (self.show_loading(), threading.Thread(target=self.fetch_bins, daemon=True).start())],
                 ["logout", lambda x: self.logout()]
             ]
         )
@@ -2141,6 +2259,21 @@ class DashboardScreen(MDScreen):
         
         self.add_widget(self.nav_layout)
         self.loading_dialog = None
+        self._init_loading_overlay()
+
+    def _init_loading_overlay(self):
+        from kivymd.uix.spinner import MDSpinner
+        from kivy.uix.modalview import ModalView
+        from kivy.uix.anchorlayout import AnchorLayout
+        modal = ModalView(background_color=[1,1,1,0.6], overlay_color=[0,0,0,0], auto_dismiss=False, size_hint=(1,1))
+        anchor = AnchorLayout(anchor_x='center', anchor_y='center')
+        anchor.add_widget(MDSpinner(size_hint=(None,None), size=(dp(48),dp(48)), active=True))
+        modal.add_widget(anchor)
+        self._loading_modal = modal
+
+    def show_loading(self): self._loading_modal.open()
+    def hide_loading(self):
+        if self._loading_modal.parent: self._loading_modal.dismiss()
 
     def switch_to_recycle(self):
         self.nav_drawer.set_state("close")
@@ -2271,38 +2404,40 @@ class DashboardScreen(MDScreen):
             
             if response.status_code == 401:
                 print("Session expired or logged in elsewhere")
-                app.force_logout()
+                Clock.schedule_once(lambda dt: app.force_logout(), 0)
                 return
 
             if response.status_code == 403 and "APP_UPDATE_REQUIRED" in response.text:
-                app.show_update_dialog()
+                Clock.schedule_once(lambda dt: app.show_update_dialog(), 0)
                 return
 
             if response.status_code == 200:
                 bins = response.json()
                 
                 # Group bins by price_lak
-                self.grouped_data = {}
+                grouped = {}
                 for b in bins:
                     price = float(b['price_lak'])
-                    if price not in self.grouped_data:
-                        self.grouped_data[price] = []
-                    self.grouped_data[price].append(b)
+                    if price not in grouped:
+                        grouped[price] = []
+                    grouped[price].append(b)
+                self.grouped_data = grouped
                 
-                # Update UI Grid
-                self.item_grid.clear_widgets()
-                # Sort by price
-                sorted_prices = sorted(self.grouped_data.keys())
-                for p in sorted_prices:
-                    widget = BinGroupWidget(
-                        price_lak=p,
-                        stock_count=len(self.grouped_data[p]),
-                        on_qty_change=self.handle_qty_change
-                    )
-                    self.item_grid.add_widget(widget)
-                    
+                def _update_ui(dt):
+                    self.item_grid.clear_widgets()
+                    for p in sorted(self.grouped_data.keys()):
+                        widget = BinGroupWidget(
+                            price_lak=p,
+                            stock_count=len(self.grouped_data[p]),
+                            on_qty_change=self.handle_qty_change
+                        )
+                        self.item_grid.add_widget(widget)
+                Clock.schedule_once(_update_ui, 0)
+                
         except Exception as e:
             print("Error fetching bins:", str(e))
+        finally:
+            Clock.schedule_once(lambda dt: self.hide_loading(), 0)
 
     def handle_qty_change(self, price, qty):
         self.selected_quantities[price] = qty
@@ -2311,8 +2446,10 @@ class DashboardScreen(MDScreen):
     def reset_to_home(self):
         """Reset cart and reload data (Home behavior)"""
         self.nav_drawer.set_state("close")
+        self.screen_manager.current = 'dashboard_screen'
         self.clear_cart()
-        self.fetch_bins()
+        self.show_loading()
+        threading.Thread(target=self.fetch_bins, daemon=True).start()
 
     def show_in_dev_dialog(self):
         self.nav_drawer.set_state("close")
