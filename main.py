@@ -589,14 +589,14 @@ class VoucherScreen(MDScreen):
         img = img.crop((0, 0, img_w, y))
         return img
 
-    def _print_via_socket(self, mac, name):
-        """Connect and print using PROVEN Android JNI UUID method."""
+    def _print_via_socket(self, mac, name, receipt_img=None):
+        """Connect and print via BT. receipt_img must be pre-generated on main thread."""
         import threading
         from kivy.clock import Clock
         
-        shop_name = getattr(self, '_print_shop_name', 'Shop')
-        items = getattr(self, '_print_items', [])
-        total_lak = getattr(self, '_print_total_lak', 0)
+        if receipt_img is None:
+            Snackbar(MDLabel(text="Error: receipt image not ready", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
+            return
         
         Snackbar(MDLabel(text=f"Connecting to {name}...", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
         
@@ -656,23 +656,9 @@ class VoucherScreen(MDScreen):
                 ostream = bt_socket.getOutputStream()
                 
                 # ========================================
-                # 1. GENERATE RECEIPT IMAGE VIA PILLOW
+                # 1. USE PRE-GENERATED RECEIPT IMAGE
                 # ========================================
-                # (ใช้โค้ดสร้างภาพ PIL เดิมของคุณตั้งแต่บรรทัดนี้ไป...)
-                from PIL import Image
-                
-                pt_thb = getattr(self, '_print_total_thb', 0)
-                pt_bonus = getattr(self, '_print_total_bonus', 0)
-                pt_rec = getattr(self, '_print_received', 0)
-                pt_chg = getattr(self, '_print_change', 0)
-                pt_sid = getattr(self, '_print_sale_id', '0000')
-                pt_date = getattr(self, '_print_date', '')
-                pt_phone = getattr(self, '_print_phone', '')
-                pt_rate = getattr(self, '_print_exchange_rate', 650.0)
-                
-                img = self.generate_receipt_image(
-                    shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate
-                )
+                img = receipt_img
 
                 # ========================================
                 # 2. CONVERT PILLOW IMAGE TO ESC/POS RASTER IN SLICES
@@ -755,12 +741,34 @@ class VoucherScreen(MDScreen):
         self._check_bt_permissions_then(self._connect_saved_or_scan)
 
     def _connect_saved_or_scan(self):
-        """Called after permissions are confirmed. Connect to saved printer or show scanner."""
+        """Called after permissions confirmed. Generates receipt image on main thread, then sends to BT."""
         app = MDApp.get_running_app()
         saved_mac = app.config_data.get('selected_printer_mac')
         saved_name = app.config_data.get('selected_printer_name', 'Printer')
+        
         if saved_mac:
-            self._print_via_socket(saved_mac, saved_name)
+            # CRITICAL: Generate the receipt image HERE on the main thread
+            # (KivyLabel rendering requires OpenGL context = main thread only)
+            try:
+                shop_name = getattr(self, '_print_shop_name', 'Shop')
+                items = getattr(self, '_print_items', [])
+                total_lak = getattr(self, '_print_total_lak', 0)
+                pt_thb = getattr(self, '_print_total_thb', 0)
+                pt_bonus = getattr(self, '_print_total_bonus', 0)
+                pt_rec = getattr(self, '_print_received', 0)
+                pt_chg = getattr(self, '_print_change', 0)
+                pt_sid = getattr(self, '_print_sale_id', '0000')
+                pt_date = getattr(self, '_print_date', '')
+                pt_phone = getattr(self, '_print_phone', '')
+                pt_rate = getattr(self, '_print_exchange_rate', 650.0)
+                receipt_img = self.generate_receipt_image(
+                    shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate
+                )
+            except Exception as e:
+                Snackbar(MDLabel(text=f"Receipt gen error: {str(e)[:40]}", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
+                return
+            # Now pass the pre-generated image to the background print thread
+            self._print_via_socket(saved_mac, saved_name, receipt_img=receipt_img)
         else:
             self.scan_and_pick_printer()
 
