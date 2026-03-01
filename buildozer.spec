@@ -43,13 +43,13 @@ fullscreen = 0
 
 # (list) Permissions
 # เพิ่ม Fine Location เพื่อความแน่นอนในการสแกน Bluetooth บน Android 10-11
-android.permissions = INTERNET, BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION
+android.permissions = INTERNET, BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_CONNECT, BLUETOOTH_SCAN, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION
 
 # (int) Target Android API, should be as high as possible.
 android.api = 34
 
 # (int) Minimum API your APK will support.
-android.minapi = 24
+android.minapi = 23
 
 # (str) Android NDK version to use
 android.ndk = 25b
@@ -70,7 +70,7 @@ android.ndk = 25b
 android.logcat_filters = *:S python:D
 
 # (str) Android additional Java classes to add to the project.
-android.add_javaclasses = android.bluetooth.BluetoothAdapter, android.bluetooth.BluetoothDevice
+# android.add_javaclasses =
 
 # (list) Android extra xml resources
 # android.extra_xml = res/xml/file.xml

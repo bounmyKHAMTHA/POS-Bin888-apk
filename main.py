@@ -429,6 +429,10 @@ class VoucherScreen(MDScreen):
         def pick(mac, name):
             if dialog_ref:
                 dialog_ref[0].dismiss()
+            app = MDApp.get_running_app()
+            app.config_data['selected_printer_mac'] = mac
+            app.config_data['selected_printer_name'] = name
+            app.save_config()
             self._print_via_socket(mac, name)
         for dev in devices:
             item = OneLineListItem(text=f"{dev['name']} ({dev['mac']})")
@@ -691,13 +695,26 @@ class VoucherScreen(MDScreen):
             Snackbar(MDLabel(text="Bluetooth printing is only supported on Android", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
             return
             
+        app = MDApp.get_running_app()
+        saved_mac = app.config_data.get('selected_printer_mac')
+        saved_name = app.config_data.get('selected_printer_name', 'Printer')
+
+        if saved_mac:
+            self._print_via_socket(saved_mac, saved_name)
+        else:
+            self.request_bt_permissions_and_scan()
+
+    def request_bt_permissions_and_scan(self):
         try:
             from android.permissions import request_permissions, check_permission, Permission
-            perms = [
-                Permission.BLUETOOTH_CONNECT,
-                Permission.BLUETOOTH_SCAN,
-                Permission.ACCESS_FINE_LOCATION,
-            ]
+            from jnius import autoclass
+            Build = autoclass('android.os.Build$VERSION')
+            
+            if Build.SDK_INT >= 31:
+                perms = [Permission.BLUETOOTH_CONNECT, Permission.BLUETOOTH_SCAN]
+            else:
+                perms = [Permission.BLUETOOTH, Permission.ACCESS_FINE_LOCATION, Permission.ACCESS_COARSE_LOCATION]
+                
             if not all(check_permission(p) for p in perms):
                 def on_permission_result(permissions, grants):
                     if all(grants):
@@ -1973,6 +1990,7 @@ class DashboardScreen(MDScreen):
             ("ໂປຣໄຟລ໌ / Profile", "account-edit", lambda x: self.switch_to_profile()),
             ("ປ່ຽນລະຫັດຜ່ານ / Password", "lock-reset", lambda x: self.switch_to_change_password()),
             ("Recycle", "recycle", lambda x: self.switch_to_recycle()),
+            ("ຕັ້ງຄ່າເຄື່ອງພິມ / Reset Printer", "printer-settings", lambda x: self.reset_printer_setting()),
             ("ອອກຈາກລະບົບ / Logout", "logout", lambda x: self.logout())
         ]
         
@@ -2343,8 +2361,30 @@ class DashboardScreen(MDScreen):
         self.manager.current = 'login'
         app = MDApp.get_running_app()
         app.config_data = {}
-        if os.path.exists("last_session.json"):
-            os.remove("last_session.json")
+        path = app.get_config_path()
+        if os.path.exists(path):
+            os.remove(path)
+
+    def reset_printer_setting(self):
+        self.nav_drawer.set_state("close")
+        app = MDApp.get_running_app()
+        if 'selected_printer_mac' in app.config_data:
+            del app.config_data['selected_printer_mac']
+        if 'selected_printer_name' in app.config_data:
+            del app.config_data['selected_printer_name']
+        app.save_config()
+        
+        from kivymd.uix.dialog import MDDialog
+        from kivymd.uix.button import MDFlatButton
+        dialog = MDDialog(
+            title="ຣີເຊັດເຄື່ອງພິມ / Printer Reset",
+            text="ລຶບການເຊື່ອມຕໍ່ເຄື່ອງພິມເກົ່າແລ້ວ\n(Saved printer has been cleared.)",
+            buttons=[MDFlatButton(text="OK", on_release=lambda x: dialog.dismiss())]
+        )
+        if hasattr(dialog, 'ids') and 'title' in dialog.ids and os.path.exists(font_path):
+            try: dialog.ids.title.font_name = "LaoFont"
+            except: pass
+        dialog.open()
 
 
 class Bin888App(MDApp):
@@ -2424,23 +2464,29 @@ class Bin888App(MDApp):
             self.config_data['last_screen'] = value
             self.save_config()
 
+    def get_config_path(self):
+        return os.path.join(self.user_data_dir, "last_session.json")
+
     def save_config(self):
         try:
-            with open("last_session.json", "w") as f:
+            with open(self.get_config_path(), "w") as f:
                 json.dump({
                     "config_data": self.config_data,
                     "base_url": self.base_url
                 }, f)
-        except: pass
+        except Exception as e:
+            print(f"Save Config Error: {e}")
 
     def load_config(self):
-        if os.path.exists("last_session.json"):
+        path = self.get_config_path()
+        if os.path.exists(path):
             try:
-                with open("last_session.json", "r") as f:
+                with open(path, "r") as f:
                     data = json.load(f)
                     self.config_data = data.get("config_data", {})
                     self.base_url = data.get("base_url", self.base_url)
-            except: pass
+            except Exception as e:
+                print(f"Load Config Error: {e}")
 
     def _reset_activity(self, *args):
         self._last_activity = datetime.now()
