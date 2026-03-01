@@ -449,7 +449,7 @@ class VoucherScreen(MDScreen):
         dlg.open()
 
     def generate_receipt_image(self, shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate):
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
         global font_path
         
         img_w = 384 # 58mm printer width
@@ -458,35 +458,59 @@ class VoucherScreen(MDScreen):
         img = Image.new('1', (img_w, height), 1)
         draw = ImageDraw.Draw(img)
         
-        try:
-            f_h3 = ImageFont.truetype(font_path, 34)
-            f_h6 = ImageFont.truetype(font_path, 28)
-            f_body = ImageFont.truetype(font_path, 24)
-            f_small = ImageFont.truetype(font_path, 20)
-        except Exception:
-            f_h3 = ImageFont.load_default()
-            f_h6 = f_h3
-            f_body = f_h3
-            f_small = f_h3
+        def render_lao_text_to_pil(text, font_size):
+            try:
+                from kivy.core.text import Label as KivyLabel
+                from kivy.core.text import LabelBase
+                import os
+                font_name = "Roboto"
+                if os.path.exists(font_path):
+                    if "LaoFont" not in LabelBase.get_ext_fonts():
+                        LabelBase.register(name="LaoFont", fn_regular=font_path)
+                    font_name = "LaoFont"
+                    
+                lbl = KivyLabel(text=str(text), font_name=font_name, font_size=font_size, color=(0,0,0,1))
+                lbl.refresh()
+                if not lbl.texture:
+                    return None
+                    
+                from PIL import Image as PILImage
+                from PIL import ImageOps
+                tex = lbl.texture
+                img_tex = PILImage.frombytes('RGBA', tex.size, tex.pixels)
+                # Kivy textures are stored bottom-up
+                img_tex = ImageOps.flip(img_tex)
+                return img_tex
+            except Exception as e:
+                print(f"Lao render error: {e}")
+                return None
 
-        def draw_center(text, y_pos, font):
-            bbox = draw.textbbox((0, 0), str(text), font=font)
-            tw = bbox[2] - bbox[0]
-            draw.text(((img_w - tw) // 2, y_pos), str(text), font=font, fill=0)
-            return y_pos + (bbox[3] - bbox[1]) + 10
+        def draw_center(text, y_pos, font_size):
+            pil_txt = render_lao_text_to_pil(text, font_size)
+            if pil_txt:
+                tw, th = pil_txt.size
+                img.paste(0, ((img_w - tw) // 2, y_pos), pil_txt.split()[3])
+                return y_pos + th + 10
+            return y_pos + 30
 
-        def draw_row(label, value, y_pos, font):
-            draw.text((10, y_pos), str(label), font=font, fill=0)
-            bbox = draw.textbbox((0, 0), str(value), font=font)
-            tw = bbox[2] - bbox[0]
-            draw.text((img_w - 10 - tw, y_pos), str(value), font=font, fill=0)
-            return y_pos + (bbox[3] - bbox[1]) + 10
+        def draw_row(label, value, y_pos, font_size):
+            pil_lbl = render_lao_text_to_pil(label, font_size)
+            pil_val = render_lao_text_to_pil(value, font_size)
+            th = 0
+            if pil_lbl:
+                img.paste(0, (10, y_pos), pil_lbl.split()[3])
+                th = max(th, pil_lbl.size[1])
+            if pil_val:
+                tw, vh = pil_val.size
+                img.paste(0, (img_w - 10 - tw, y_pos), pil_val.split()[3])
+                th = max(th, vh)
+            return y_pos + th + 10
 
         y = 10
         
         # 1. Header (Shop, Phone)
-        y = draw_center(shop_name, y, f_h6)
-        y = draw_center(f"Phone: {pt_phone}", y, f_body)
+        y = draw_center(shop_name, y, 28)
+        y = draw_center(f"Phone: {pt_phone}", y, 24)
         y += 10
         
         # 2. Items
@@ -495,7 +519,7 @@ class VoucherScreen(MDScreen):
         
         for item in items:
             item_lad = float(item.get('lad', pt_rate))
-            y = draw_center(f"ID: #{pt_sid} | {pt_date} | ເລດ: {item_lad:,.0f}", y, f_small)
+            y = draw_center(f"ID: #{pt_sid} | {pt_date} | ເລດ: {item_lad:,.0f}", y, 20)
             
             base_brand_label = "GIFT CARD"
             app = MDApp.get_running_app()
@@ -506,8 +530,8 @@ class VoucherScreen(MDScreen):
             if matched_brand:
                 base_brand_label = matched_brand['name'].upper()
 
-            y = draw_center(base_brand_label, y, f_body)
-            y = draw_center(item['name'], y, f_h6)
+            y = draw_center(base_brand_label, y, 24)
+            y = draw_center(item['name'], y, 28)
             
             price_lak = float(item['price_lak'])
             price_thb = float(item['price_thb'])
@@ -515,52 +539,50 @@ class VoucherScreen(MDScreen):
             
             bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
             sub_text = f"{price_lak:,.0f} ກີບ / {price_thb:,.2f} THB{bonus_text}"
-            y = draw_center(sub_text, y, f_small) + 15
+            y = draw_center(sub_text, y, 20) + 15
             
             # PIN Outline Box
-            y = draw_center("PIN CODE / REDEEM CODE", y, f_small) + 5
+            y = draw_center("PIN CODE / REDEEM CODE", y, 20) + 5
             pw_str = str(item.get('pw', 'N/A'))
             
-            bbox = draw.textbbox((0, 0), pw_str, font=f_h3)
-            tw = bbox[2] - bbox[0]
-            th = bbox[3] - bbox[1]
-            
-            # Box dimensions
-            bx = (img_w - tw) // 2 - 20
-            by = y
-            bw = tw + 40
-            bh = th + 25
-            
-            # Draw rounded rectangle equivalent using lines
-            draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
-            draw.text(((img_w - tw) // 2, y + 5), pw_str, font=f_h3, fill=0)
-            y += bh + 25
+            pil_pw = render_lao_text_to_pil(pw_str, 34)
+            if pil_pw:
+                tw, th = pil_pw.size
+                bx = (img_w - tw) // 2 - 20
+                by = y
+                bw = tw + 40
+                bh = th + 25
+                draw.rectangle([bx, by, bx+bw, by+bh], outline=0, width=2)
+                img.paste(0, ((img_w - tw) // 2, y + 5), pil_pw.split()[3])
+                y += bh + 25
+            else:
+                y += 50
             
             # Bottom Demarcation
             draw.line((10, y, img_w-10, y), fill=0, width=1)
             y += 15
         
         # 3. Summary
-        y = draw_row("Total LAK:", f"{total_lak:,.0f} LAK", y, f_body)
-        y = draw_row("Total THB:", f"{pt_thb:,.2f} THB", y, f_body)
+        y = draw_row("Total LAK:", f"{total_lak:,.0f} LAK", y, 24)
+        y = draw_row("Total THB:", f"{pt_thb:,.2f} THB", y, 24)
         if pt_bonus > 0:
-            y = draw_row("Total Bonus:", f"+ {pt_bonus:,.2f} THB", y, f_body)
+            y = draw_row("Total Bonus:", f"+ {pt_bonus:,.2f} THB", y, 24)
         
         y += 10
         draw.line((10, y, img_w-10, y), fill=0, width=1)
         y += 10
         
-        y = draw_row("Received:", f"{pt_rec:,.0f} LAK", y, f_body)
-        y = draw_row("Change:", f"{pt_chg:,.0f} LAK", y, f_h6) + 20
+        y = draw_row("Received:", f"{pt_rec:,.0f} LAK", y, 24)
+        y = draw_row("Change:", f"{pt_chg:,.0f} LAK", y, 28) + 20
         
         # 4. Footer
         footer1 = "*** ທຸກບິນທີ່ຂາຍໄປຢູ່ໄດ້ບໍ່ເກີນ 3 ວັນຈະໝົດອາຍຸ"
         footer2 = "ຫາກໝົດອາຍຸແລ້ວຕິດຕໍ່ຮ້ານຄ້າເພື່ອແກ້ໄຂ ***"
         footer3 = "ຂອບໃຈທີ່ໃຊ້ບໍລິການ / Thank You!"
         
-        y = draw_center(footer1, y, f_small)
-        y = draw_center(footer2, y, f_small) + 10
-        y = draw_center(footer3, y, f_small)
+        y = draw_center(footer1, y, 20)
+        y = draw_center(footer2, y, 20) + 10
+        y = draw_center(footer3, y, 20)
         
         # EXTRA PADDING AT THE BOTTOM (1-2 lines for tearing)
         y += 150 
@@ -592,8 +614,16 @@ class VoucherScreen(MDScreen):
                 device = adapter.getRemoteDevice(mac)
                 serial_uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
                 
-                bt_socket = device.createInsecureRfcommSocketToServiceRecord(serial_uuid)
-                bt_socket.connect()
+                try:
+                    bt_socket = device.createInsecureRfcommSocketToServiceRecord(serial_uuid)
+                    bt_socket.connect()
+                except Exception as e_sock:
+                    print(f"Standard BT connect failed: {e_sock}, trying fallback (Reflection)...")
+                    # Fallback to Port 1 via Reflection
+                    socket_method = device.getClass().getMethod("createRfcommSocket", [autoclass('java.lang.Integer').TYPE])
+                    bt_socket = socket_method.invoke(device, [1])
+                    bt_socket.connect()
+                    print("Connected via Reflection fallback!")
                 
                 ostream = bt_socket.getOutputStream()
                 
@@ -718,7 +748,8 @@ class VoucherScreen(MDScreen):
             if not all(check_permission(p) for p in perms):
                 def on_permission_result(permissions, grants):
                     if all(grants):
-                        self.scan_and_pick_printer()
+                        from kivy.clock import Clock
+                        Clock.schedule_once(lambda dt: self.scan_and_pick_printer(), 0.5)
                     else:
                         Snackbar(MDLabel(text="Bluetooth permission denied.", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
                 request_permissions(perms, on_permission_result)
