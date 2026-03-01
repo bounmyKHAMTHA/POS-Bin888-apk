@@ -433,7 +433,25 @@ class VoucherScreen(MDScreen):
             app.config_data['selected_printer_mac'] = mac
             app.config_data['selected_printer_name'] = name
             app.save_config()
-            self._print_via_socket(mac, name)
+            # Generate receipt image on main thread before BT background thread
+            try:
+                receipt_img = self.generate_receipt_image(
+                    getattr(self, '_print_shop_name', 'Shop'),
+                    getattr(self, '_print_items', []),
+                    getattr(self, '_print_total_lak', 0),
+                    getattr(self, '_print_total_thb', 0),
+                    getattr(self, '_print_total_bonus', 0),
+                    getattr(self, '_print_received', 0),
+                    getattr(self, '_print_change', 0),
+                    getattr(self, '_print_sale_id', '0000'),
+                    getattr(self, '_print_date', ''),
+                    getattr(self, '_print_phone', ''),
+                    getattr(self, '_print_exchange_rate', 650.0),
+                )
+            except Exception as e:
+                Snackbar(MDLabel(text=f"Receipt gen error: {str(e)[:40]}", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
+                return
+            self._print_via_socket(mac, name, receipt_img=receipt_img)
         for dev in devices:
             item = OneLineListItem(text=f"{dev['name']} ({dev['mac']})")
             item.bind(on_release=lambda x, m=dev['mac'], n=dev['name']: pick(m, n))
