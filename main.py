@@ -296,7 +296,7 @@ class LoginScreen(MDScreen):
 # VoucherItemCard has been removed in favor of direct Image Rendering
 
 class VoucherScreen(MDScreen):
-    def setup_voucher(self, shop_name, items, sale_id, totals, received=0, exchange_rate=650.0, **kwargs):
+    def setup_voucher(self, shop_name, items, sale_id, totals, received=0, exchange_rate=650.0, on_complete=None, **kwargs):
         app = MDApp.get_running_app()
         from datetime import datetime
         now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -367,10 +367,13 @@ class VoucherScreen(MDScreen):
                     allow_stretch=True,
                     keep_ratio=True,
                     size_hint_y=None,
-                    height=dp(min(img.height // 1.5, 1200))
+                height=dp(min(img.height // 1.5, 1200))
                 ))
             except Exception as e:
                 print(f"Receipt render error: {e}")
+            finally:
+                if on_complete:
+                    on_complete()
 
         Clock.schedule_once(_generate, 0.1)
 
@@ -2600,9 +2603,16 @@ class DashboardScreen(MDScreen):
                 shop_name = app.config_data.get('shop_name', 'Bin888')
                 
                 voucher_screen = self.manager.get_screen('voucher')
-                voucher_screen.setup_voucher(shop_name, final_items_for_receipt, sale_id, totals, received=received_amount, exchange_rate=exchange_rate)
+                voucher_screen.setup_voucher(
+                    shop_name, 
+                    final_items_for_receipt, 
+                    sale_id, 
+                    totals, 
+                    received=received_amount, 
+                    exchange_rate=exchange_rate,
+                    on_complete=self.hide_loading_dialog
+                )
                 self.manager.current = 'voucher'
-                self.hide_loading_dialog()
                 
                 self.clear_cart()
                 self.fetch_bins()
