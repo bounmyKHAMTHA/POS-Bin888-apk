@@ -341,11 +341,10 @@ class VoucherScreen(MDScreen):
         ))
         self._cached_receipt_img = None  # reset cache
 
-        # Schedule image generation on next frame (after UI shows loading)
-        # KivyLabel MUST run on main thread — Clock keeps it there
+        # Update UI with text instead of image
         def _generate(dt):
             try:
-                img = self.generate_receipt_image(
+                receipt_text = self.generate_receipt_text(
                     shop_name=self._print_shop_name,
                     items=self._print_items,
                     total_lak=self._print_total_lak,
@@ -358,17 +357,30 @@ class VoucherScreen(MDScreen):
                     pt_phone=self._print_phone,
                     pt_rate=self._print_exchange_rate
                 )
-                self._cached_receipt_img = img
-                preview_path = os.path.join(tempfile.gettempdir(), "receipt_preview.png")
-                img.save(preview_path)
                 self.preview_container.clear_widgets()
-                self.preview_container.add_widget(KivyImage(
-                    source=preview_path,
-                    allow_stretch=True,
-                    keep_ratio=True,
+                
+                # Make the text label look somewhat like a receipt
+                lbl = MDLabel(
+                    text=receipt_text,
+                    halign="center",
+                    valign="top",
                     size_hint_y=None,
-                height=dp(min(img.height // 1.5, 1200))
-                ))
+                    theme_text_color="Custom",
+                    text_color=[0, 0, 0, 1]
+                )
+                
+                # Use LaoFont if available for the preview too
+                global font_path
+                if font_path and os.path.exists(font_path):
+                    lbl.font_name = "LaoFont"
+                else:
+                    # Fallback to standard monospaced font if LaoFont isn't working
+                    lbl.font_name = "RobotoMono-Regular"
+                
+                lbl.bind(texture_size=lambda instance, size: setattr(instance, 'height', size[1] + dp(40)))
+                
+                self.preview_container.add_widget(lbl)
+                
             except Exception as e:
                 print(f"Receipt render error: {e}")
             finally:
@@ -451,9 +463,9 @@ class VoucherScreen(MDScreen):
             app.config_data['selected_printer_mac'] = mac
             app.config_data['selected_printer_name'] = name
             app.save_config()
-            # Generate receipt image on main thread before BT background thread
+            # Generate receipt text on main thread before BT background thread
             try:
-                receipt_img = self.generate_receipt_image(
+                receipt_data = self.generate_receipt_text(
                     getattr(self, '_print_shop_name', 'Shop'),
                     getattr(self, '_print_items', []),
                     getattr(self, '_print_total_lak', 0),
@@ -469,7 +481,7 @@ class VoucherScreen(MDScreen):
             except Exception as e:
                 Snackbar(MDLabel(text=f"Receipt gen error: {str(e)[:40]}", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
                 return
-            self._print_via_socket(mac, name, receipt_img=receipt_img)
+            self._print_via_socket(mac, name, receipt_data=receipt_data)
         for dev in devices:
             item = OneLineListItem(text=f"{dev['name']} ({dev['mac']})")
             item.bind(on_release=lambda x, m=dev['mac'], n=dev['name']: pick(m, n))
@@ -625,13 +637,66 @@ class VoucherScreen(MDScreen):
         img = img.crop((0, 0, img_w, y))
         return img
 
-    def _print_via_socket(self, mac, name, receipt_img=None):
-        """Connect and print via BT. receipt_img must be pre-generated on main thread."""
+    def generate_receipt_text(self, shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate):
+        width = 32
+        
+        def center(text):
+            if len(text) >= width: return text
+            spaces = (width - len(text)) // 2
+            return " " * spaces + text
+            
+        def left_right(left, right):
+            space_len = width - len(left) - len(right)
+            if space_len < 1: space_len = 1
+            return left + " " * space_len + right
+            
+        lines = []
+        lines.append(center(shop_name))
+        lines.append(center(f"Phone: {pt_phone}"))
+        lines.append("-" * width)
+        
+        for item in items:
+            item_lad = float(item.get('lad', pt_rate))
+            lines.append(center(f"ID: #{pt_sid} | {pt_date}"))
+            lines.append(center(f"Rate: {item_lad:,.0f}"))
+            
+            lines.append(center("GIFT CARD"))
+            lines.append(center(item['name']))
+            
+            price_lak = float(item['price_lak'])
+            price_thb = float(item['price_thb'])
+            price_bonus = float(item.get('price_bonus', 0))
+            
+            bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
+            lines.append(center(f"{price_lak:,.0f} LAK / {price_thb:,.2f} THB{bonus_text}"))
+            
+            lines.append(center("PIN CODE / REDEEM CODE"))
+            lines.append(center(str(item.get('pw', 'N/A'))))
+            lines.append("-" * width)
+            
+        lines.append(left_right("Total LAK:", f"{total_lak:,.0f} LAK"))
+        lines.append(left_right("Total THB:", f"{pt_thb:,.2f} THB"))
+        if pt_bonus > 0:
+            lines.append(left_right("Total Bonus:", f"+ {pt_bonus:,.2f} THB"))
+            
+        lines.append("-" * width)
+        lines.append(left_right("Received:", f"{pt_rec:,.0f} LAK"))
+        lines.append(left_right("Change:", f"{pt_chg:,.0f} LAK"))
+        
+        lines.append("")
+        lines.append(center("*** ທຸກບິນທີ່ຂາຍໄປຢູ່ໄດ້ບໍ່ເກີນ 3 ວັນ ***"))
+        lines.append(center("ຂອບໃຈທີ່ໃຊ້ບໍລິການ!"))
+        lines.append("\n\n\n\n\n") # Feed lines
+        
+        return "\n".join(lines)
+
+    def _print_via_socket(self, mac, name, receipt_data=None):
+        """Connect and print via BT."""
         import threading
         from kivy.clock import Clock
         
-        if receipt_img is None:
-            Snackbar(MDLabel(text="Error: receipt image not ready", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
+        if receipt_data is None:
+            Snackbar(MDLabel(text="Error: receipt data not ready", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
             return
         
         Snackbar(MDLabel(text=f"Connecting to {name}...", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
@@ -692,21 +757,8 @@ class VoucherScreen(MDScreen):
                 ostream = bt_socket.getOutputStream()
                 
                 # ========================================
-                # 1. USE PRE-GENERATED RECEIPT IMAGE
+                # 1. SEND ESC/POS INIT
                 # ========================================
-                img = receipt_img
-
-                # ========================================
-                # 2. CONVERT PILLOW IMAGE TO ESC/POS RASTER IN SLICES
-                # ========================================
-                w, h = img.size
-                pad_w = ((w + 7) // 8) * 8
-                if pad_w != w:
-                    new_img = Image.new('1', (pad_w, h), 255) # FIXED: 255 is white
-                    new_img.paste(img, (0,0))
-                    img = new_img
-                    w = pad_w
-                    
                 init_cmd = bytearray([0x1B, 0x40]) # Init
                 try:
                     ostream.write(bytes(init_cmd))
@@ -715,45 +767,17 @@ class VoucherScreen(MDScreen):
                 ostream.flush()
                 time.sleep(0.1)
 
-                slice_height = 200
-                pixels = img.load()
-                
-                for start_y in range(0, h, slice_height):
-                    cur_h = min(slice_height, h - start_y)
-                    
-                    xL = (w // 8) % 256
-                    xH = (w // 8) // 256
-                    yL = cur_h % 256
-                    yH = cur_h // 256
-                    
-                    receipt = bytearray()
-                    receipt.extend([0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH])
-                    
-                    for py in range(start_y, start_y + cur_h):
-                        for px_byte in range(w // 8):
-                            byte_val = 0
-                            for bit in range(8):
-                                idx = px_byte * 8 + bit
-                                # White background (1) -> bit 0, Black pixel (0) -> bit 1
-                                if pixels[idx, py] == 0:
-                                    byte_val |= (1 << (7 - bit))
-                            receipt.append(byte_val)
-                    
-                    # Write slice to stream
-                    try:
-                        ostream.write(bytes(receipt))
-                    except Exception:
-                        for b in receipt: ostream.write(b)
-                    ostream.flush()
-                    time.sleep(0.05) # Reduced delay for faster printing
-
-                # Feed 4 lines at the end for easy tearing
-                feed_cmd = bytearray([0x0A, 0x0A, 0x0A, 0x0A])
+                # ========================================
+                # 2. SEND UTF-8 TEXT
+                # ========================================
+                text_bytes = receipt_data.encode('utf-8')
                 try:
-                    ostream.write(bytes(feed_cmd))
+                    ostream.write(bytes(text_bytes))
                 except Exception:
-                    for b in feed_cmd: ostream.write(b)
+                    for b in text_bytes: ostream.write(b)
                 ostream.flush()
+                time.sleep(0.1)
+
                 bt_socket.close()
                 
                 Clock.schedule_once(lambda dt: Snackbar(MDLabel(text="\u2713 ພິມສຳເລັດ! (Print OK)", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open(), 0)
@@ -783,8 +807,6 @@ class VoucherScreen(MDScreen):
         saved_name = app.config_data.get('selected_printer_name', 'Printer')
         
         if saved_mac:
-            # CRITICAL: Generate the receipt image HERE on the main thread
-            # (KivyLabel rendering requires OpenGL context = main thread only)
             try:
                 shop_name = getattr(self, '_print_shop_name', 'Shop')
                 items = getattr(self, '_print_items', [])
@@ -797,14 +819,14 @@ class VoucherScreen(MDScreen):
                 pt_date = getattr(self, '_print_date', '')
                 pt_phone = getattr(self, '_print_phone', '')
                 pt_rate = getattr(self, '_print_exchange_rate', 650.0)
-                receipt_img = self.generate_receipt_image(
+                receipt_data = self.generate_receipt_text(
                     shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate
                 )
             except Exception as e:
                 Snackbar(MDLabel(text=f"Receipt gen error: {str(e)[:40]}", theme_text_color="Custom", text_color=[1, 1, 1, 1])).open()
                 return
-            # Now pass the pre-generated image to the background print thread
-            self._print_via_socket(saved_mac, saved_name, receipt_img=receipt_img)
+            # Now pass the pre-generated text to the background print thread
+            self._print_via_socket(saved_mac, saved_name, receipt_data=receipt_data)
         else:
             self.scan_and_pick_printer()
 
