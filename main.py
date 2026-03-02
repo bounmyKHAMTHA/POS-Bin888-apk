@@ -1010,11 +1010,11 @@ class RecycleScreen(MDScreen):
         stats_layout.add_widget(self.failed_card)
         content.add_widget(stats_layout)
         
-        # Bot Status Banner
+        # Team Status Banner
         self.status_banner = MDCard(
             size_hint_y=None, height=dp(50), padding=dp(10), radius=dp(8), elevation=1, md_bg_color=get_color_from_hex("#EEEEEE")
         )
-        self.status_label = MDLabel(text="Bot Status: Idle", halign="center", font_style="Subtitle2")
+        self.status_label = MDLabel(text="ສະຖານະທີມງານ: Idle (ວ່າງ)", font_name="LaoFont" if os.path.exists(font_path) else None, halign="center", font_style="Subtitle2")
         self.status_banner.add_widget(self.status_label)
         content.add_widget(self.status_banner)
         
@@ -1067,7 +1067,7 @@ class RecycleScreen(MDScreen):
         # Buttons
         btns = MDBoxLayout(spacing=dp(10), size_hint_y=None, height=dp(50))
         self.start_btn = MDFillRoundFlatButton(
-            text="Start Auto-Recycle Bot", icon="play", md_bg_color=get_color_from_hex("#311B92"), on_release=self.start_bot
+            text="ເລີ່ມໃຫ້ທີມງານເຮັດວຽກ", font_name="LaoFont" if os.path.exists(font_path) else None, icon="play", md_bg_color=get_color_from_hex("#311B92"), on_release=self.start_bot
         )
         self.reset_btn = MDFlatButton(
             text="Reset & Clear Errors", theme_text_color="Error", on_release=self.reset_bot
@@ -1161,11 +1161,11 @@ class RecycleScreen(MDScreen):
         
         is_running = data.get('is_running', False)
         if is_running:
-            self.status_label.text = "Bot Status: Running... (ກຳລັງເຮັດວຽກ)"
+            self.status_label.text = "ສະຖານະທີມງານ: Running... (ກຳລັງເຮັດວຽກ)"
             self.status_banner.md_bg_color = get_color_from_hex("#E8F5E9")
             self.start_btn.disabled = True
         else:
-            self.status_label.text = "Bot Status: Idle (ວ່າງ)"
+            self.status_label.text = "ສະຖານະທີມງານ: Idle (ວ່າງ)"
             self.status_banner.md_bg_color = get_color_from_hex("#EEEEEE")
             self.start_btn.disabled = False
             
@@ -1393,18 +1393,54 @@ class DataScreen(MDScreen):
         )
         self.layout.add_widget(self.toolbar)
         
-        # Search Box
+        search_box = MDBoxLayout(
+            size_hint_x=0.9,
+            pos_hint={'center_x': 0.5},
+            adaptive_height=True,
+            spacing=dp(10),
+            padding=[0, dp(5), 0, dp(5)]
+        )
+        
+        from kivymd.uix.spinner import MDSpinner
+        self.data_spinner = MDSpinner(
+            size_hint=(None, None), size=(dp(30), dp(30)),
+            pos_hint={'center_y': 0.5}, active=False, opacity=0
+        )
+
+        def force_search(*args):
+            if self._search_event:
+                self._search_event.cancel()
+            self.data_spinner.active = False
+            self.data_spinner.opacity = 0
+            self.on_search(self.search_field)
+
         self.search_field = MDTextField(
             hint_text="ຄົ້ນຫາ (ID, Name...)",
             mode="round",
-            size_hint_x=0.9,
-            pos_hint={'center_x': 0.5},
-            on_text_validate=self.on_search
+            on_text_validate=force_search
         )
+        
+        self._search_event = None
+        def debounced_search(instance, value):
+            self.data_spinner.active = True
+            self.data_spinner.opacity = 1
+            if self._search_event:
+                self._search_event.cancel()
+            def do_search(dt):
+                self.data_spinner.active = False
+                self.data_spinner.opacity = 0
+                self.on_search(instance)
+            self._search_event = Clock.schedule_once(do_search, 5)
+            
+        self.search_field.bind(text=debounced_search)
+
         if os.path.exists(font_path):
             self.search_field.font_name = "LaoFont"
             self.search_field.font_name_hint_text = "LaoFont"
-        self.layout.add_widget(self.search_field)
+            
+        search_box.add_widget(self.search_field)
+        search_box.add_widget(self.data_spinner)
+        self.layout.add_widget(search_box)
         
         # List
         self.scroll = MDScrollView()
@@ -2138,9 +2174,36 @@ class DashboardScreen(MDScreen):
             size_hint_y=None, height=dp(40),
             multiline=False
         )
-        # Bind for live search and Enter key
-        self.main_search_field.bind(text=self.filter_shelf)
-        self.main_search_field.bind(on_text_validate=lambda x: self.filter_shelf(x, x.text))
+        
+        from kivymd.uix.spinner import MDSpinner
+        self.main_spinner = MDSpinner(
+            size_hint=(None, None), size=(dp(30), dp(30)),
+            pos_hint={'center_y': 0.5}, active=False, opacity=0
+        )
+
+        def force_filter(*args):
+            if self._filter_event:
+                self._filter_event.cancel()
+            self.main_spinner.active = False
+            self.main_spinner.opacity = 0
+            self.filter_shelf(self.main_search_field, self.main_search_field.text)
+
+        # Bind for live search with 5 second debounce and Enter key
+        self._filter_event = None
+        def debounced_filter_shelf(instance, value):
+            # Show the spinner to indicate it is waiting to search
+            self.main_spinner.active = True
+            self.main_spinner.opacity = 1
+            if self._filter_event:
+                self._filter_event.cancel()
+            def do_filter(dt):
+                self.main_spinner.active = False
+                self.main_spinner.opacity = 0
+                self.filter_shelf(instance, value)
+            self._filter_event = Clock.schedule_once(do_filter, 5)
+            
+        self.main_search_field.bind(text=debounced_filter_shelf)
+        self.main_search_field.bind(on_text_validate=force_filter)
         
         if os.path.exists(font_path):
             self.main_search_field.font_name = "LaoFont"
@@ -2148,10 +2211,11 @@ class DashboardScreen(MDScreen):
             
         btn_submit = MDIconButton(
             icon="magnify",
-            on_release=lambda x: self.filter_shelf(self.main_search_field, self.main_search_field.text)
+            on_release=force_filter
         )
         
         self.search_container.add_widget(self.main_search_field)
+        self.search_container.add_widget(self.main_spinner)
         self.search_container.add_widget(btn_submit)
         self.layout.add_widget(self.search_container)
         
