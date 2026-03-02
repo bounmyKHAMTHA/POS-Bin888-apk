@@ -355,8 +355,8 @@ class VoucherScreen(MDScreen):
                 pt_phone   = self._print_phone
                 pt_rate    = self._print_exchange_rate
 
-                S = 10   # small font size (~30% larger)
-                L = 16   # large font size (~30% larger)
+                S = 14   # small font size
+                L = 18   # large font size
 
                 def s(text, size=S):
                     if size == L:
@@ -694,10 +694,8 @@ class VoucherScreen(MDScreen):
         width = 32
 
         # ESC/POS commands
-        FONT_A   = "\x1b\x4d\x00"  # Normal font 
-        FONT_B   = "\x1b\x4d\x01"  # Small font (~30% smaller)
-        BOLD_ON  = "\x1b\x45\x01"  # Bold text
-        BOLD_OFF = "\x1b\x45\x00"
+        MODE_S = "\x1b\x21\x00"  # Font A (Normal)
+        MODE_L = "\x1b\x21\x18"  # Font A (Double Height + Bold)
 
         def center(text):
             t = str(text)
@@ -724,9 +722,9 @@ class VoucherScreen(MDScreen):
         lines = []
 
         # Header - Large/bold shop name, small details
-        lines.append(FONT_A + BOLD_ON + center(shop_name) + BOLD_OFF)
-        lines.append(FONT_B + center(f"Phone: {pt_phone}"))
-        lines.append(sep)
+        lines.append(MODE_L + center(shop_name))
+        lines.append(MODE_S + center(f"Phone: {pt_phone}"))
+        lines.append(MODE_S + sep)
 
         for item in items:
             item_lad = float(item.get('lad', pt_rate))
@@ -735,38 +733,38 @@ class VoucherScreen(MDScreen):
             price_bonus = float(item.get('price_bonus', 0))
             pw = str(item.get('pw', 'N/A'))
 
-            # Details: Font B (small)
-            lines.append(FONT_B + center(f"#{pt_sid} | {pt_date} | {item_lad:.0f}"))
-            lines.append(center("GIFT CARD"))
+            # Details: Font A (normal)
+            lines.append(MODE_S + center(f"#{pt_sid} | {pt_date} | {item_lad:.0f}"))
+            lines.append(MODE_S + center("GIFT CARD"))
             
-            # Item Name: Font A (normal) + Bold
-            lines.append(FONT_A + BOLD_ON + center(item['name']) + BOLD_OFF)
+            # Item Name: Font A + Double Height + Bold
+            lines.append(MODE_L + center(item['name']))
             
-            # Price: Font B (small)
+            # Price: Font A (normal)
             bonus_text = f" + Bonus {price_bonus:.2f}" if price_bonus > 0 else ""
-            lines.append(FONT_B + center(f"{price_lak:,.0f}LAK / {price_thb:.2f}THB{bonus_text}"))
-            lines.append(center("--- PIN CODE / REDEEM CODE ---"))
+            lines.append(MODE_S + center(f"{price_lak:,.0f} LAK / {price_thb:.2f} THB{bonus_text}"))
+            lines.append(MODE_S + center("--- PIN CODE / REDEEM CODE ---"))
             
-            # PIN Box: Font A (normal) + Bold
-            lines.append(FONT_A + BOLD_ON + pin_box(pw) + BOLD_OFF)
-            lines.append(FONT_B + sep)
+            # PIN Box: Font A + Double Height + Bold
+            lines.append(MODE_L + pin_box(pw))
+            lines.append(MODE_S + sep)
 
-        # Summary - Font B (small)
-        lines.append(FONT_B + left_right("Total LAK:", f"{total_lak:,.0f} LAK"))
-        lines.append(left_right("Total THB:", f"{pt_thb:.2f} THB"))
+        # Summary 
+        lines.append(MODE_S + left_right("Total LAK:", f"{total_lak:,.0f} LAK"))
+        lines.append(MODE_S + left_right("Total THB:", f"{pt_thb:.2f} THB"))
         if pt_bonus > 0:
-            lines.append(left_right("Total Bonus:", f"+ {pt_bonus:.2f} THB"))
-        lines.append(sep)
-        lines.append(left_right("Received:", f"{pt_rec:,.0f} LAK"))
-        lines.append(left_right("Change:", f"{pt_chg:,.0f} LAK"))
+            lines.append(MODE_S + left_right("Total Bonus:", f"+ {pt_bonus:.2f} THB"))
+        lines.append(MODE_S + sep)
+        lines.append(MODE_S + left_right("Received:", f"{pt_rec:,.0f} LAK"))
+        lines.append(MODE_S + left_right("Change:", f"{pt_chg:,.0f} LAK"))
 
         # Footer 
-        lines.append("")
-        lines.append(center("*** Voucher valid within 3 days ***"))
-        lines.append(center("Thank you for your purchase!"))
+        lines.append(MODE_S + "")
+        lines.append(MODE_S + center("*** Voucher valid within 3 days ***"))
+        lines.append(MODE_S + center("Thank you for your purchase!"))
         
-        # Feed lines (Return to normal font first to avoid side effects on next print)
-        lines.append(FONT_A + "\n\n\n\n")
+        # Feed lines (Return to normal font first)
+        lines.append(MODE_S + "\n\n\n\n")
 
         return "\n".join(lines)
 
