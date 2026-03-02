@@ -277,7 +277,6 @@ class LoginScreen(MDScreen):
             MDApp.get_running_app().config_data = data
             MDApp.get_running_app().base_url = base_url
             MDApp.get_running_app().save_config() # Save for hot reload
-            threading.Thread(target=MDApp.get_running_app().fetch_brands, daemon=True).start()
             self.manager.current = 'dashboard'
         elif response.status_code == 403 and "APP_UPDATE_REQUIRED" in response.text:
             self.login_btn.text = "UPDATE REQUIRED"
@@ -344,45 +343,106 @@ class VoucherScreen(MDScreen):
         # Update UI with text instead of image
         def _generate(dt):
             try:
-                receipt_text = self.generate_receipt_text(
-                    shop_name=self._print_shop_name,
-                    items=self._print_items,
-                    total_lak=self._print_total_lak,
-                    pt_thb=self._print_total_thb,
-                    pt_bonus=self._print_total_bonus,
-                    pt_rec=self._print_received,
-                    pt_chg=self._print_change,
-                    pt_sid=self._print_sale_id,
-                    pt_date=self._print_date,
-                    pt_phone=self._print_phone,
-                    pt_rate=self._print_exchange_rate
-                )
+                shop_name  = self._print_shop_name
+                items      = self._print_items
+                total_lak  = self._print_total_lak
+                pt_thb     = self._print_total_thb
+                pt_bonus   = self._print_total_bonus
+                pt_rec     = self._print_received
+                pt_chg     = self._print_change
+                pt_sid     = self._print_sale_id
+                pt_date    = self._print_date
+                pt_phone   = self._print_phone
+                pt_rate    = self._print_exchange_rate
+
+                S = 10   # small font size (~30% larger)
+                L = 16   # large font size (~30% larger)
+
+                def s(text, size=S):
+                    if size == L:
+                        return f"[size={size}sp][b]{text}[/b][/size]"
+                    return f"[size={size}sp]{text}[/size]"
+
+                def lr(left, right):
+                    return f"{left}            {right}"
+
+                sep = "-" * 32
+
+                markup_lines = []
+                # Header: shop name large
+                markup_lines.append(s(shop_name, L))
+                markup_lines.append(s(f"Phone: {pt_phone}", S))
+                markup_lines.append(s(sep, S))
+
+                for item in items:
+                    item_lad   = float(item.get('lad', pt_rate))
+                    price_lak  = float(item['price_lak'])
+                    price_thb  = float(item['price_thb'])
+                    price_bonus= float(item.get('price_bonus', 0))
+                    pw         = str(item.get('pw', 'N/A'))
+
+                    # ID + Date + Rate all on one line, small
+                    markup_lines.append(s(f"#{pt_sid} | {pt_date} | {item_lad:.0f}", S))
+                    markup_lines.append(s("GIFT CARD", S))
+                    # Item name: large
+                    markup_lines.append(s(item['name'], L))
+                    bonus_text = f" + Bonus {price_bonus:.2f}" if price_bonus > 0 else ""
+                    markup_lines.append(s(f"{price_lak:,.0f}LAK / {price_thb:.2f}THB{bonus_text}", S))
+                    markup_lines.append(s("--- PIN CODE / REDEEM CODE ---", S))
+                    # PIN box: large
+                    pw_box = f"+{'-'*(len(pw)+4)}+\n|  {pw}  |\n+{'-'*(len(pw)+4)}+"
+                    markup_lines.append(s(pw_box, L))
+                    markup_lines.append(s(sep, S))
+
+                markup_lines.append(s(lr("Total LAK:", f"{total_lak:,.0f} LAK"), S))
+                markup_lines.append(s(lr("Total THB:", f"{pt_thb:.2f} THB"), S))
+                if pt_bonus > 0:
+                    markup_lines.append(s(lr("Total Bonus:", f"+ {pt_bonus:.2f} THB"), S))
+                markup_lines.append(s(sep, S))
+                markup_lines.append(s(lr("Received:", f"{pt_rec:,.0f} LAK"), S))
+                markup_lines.append(s(lr("Change:", f"{pt_chg:,.0f} LAK"), S))
+                markup_lines.append(s("", S))
+                markup_lines.append(s("*** Voucher valid within 3 days ***", S))
+                markup_lines.append(s("Thank you for your purchase!", S))
+
+                markup_text = "\n".join(markup_lines)
+
                 self.preview_container.clear_widgets()
-                
-                # Make the text label look somewhat like a receipt
+
+                from kivy.metrics import sp
+                line_count = markup_text.count('\n') + 1
+                estimated_height = sp(L) * line_count + dp(30)
+
                 lbl = MDLabel(
-                    text=receipt_text,
+                    text=markup_text,
+                    markup=True,
                     halign="center",
                     valign="top",
                     size_hint_y=None,
+                    height=estimated_height,
+                    line_height=0.8,
                     theme_text_color="Custom",
                     text_color=[0, 0, 0, 1]
                 )
-                
-                # Use LaoFont if available for the preview too
-                global font_path
-                if font_path and os.path.exists(font_path):
-                    lbl.font_name = "LaoFont"
-                else:
-                    # Fallback to standard monospaced font if LaoFont isn't working
-                    lbl.font_name = "RobotoMono-Regular"
-                
-                lbl.bind(texture_size=lambda instance, size: setattr(instance, 'height', size[1] + dp(40)))
-                
+                lbl.font_name = "Roboto"
+
+                def _update_height(instance, size):
+                    if size[1] > dp(10):
+                        instance.height = size[1] + dp(20)
+                lbl.bind(texture_size=_update_height)
+
                 self.preview_container.add_widget(lbl)
-                
+
             except Exception as e:
                 print(f"Receipt render error: {e}")
+                err_lbl = MDLabel(
+                    text=f"Preview error: {str(e)}\n(Data OK - tap print)",
+                    halign="center",
+                    size_hint_y=None,
+                    height=dp(100)
+                )
+                self.preview_container.clear_widgets()
+                self.preview_container.add_widget(err_lbl)
             finally:
                 if on_complete:
                     on_complete()
@@ -569,13 +629,6 @@ class VoucherScreen(MDScreen):
             y = draw_center(f"ID: #{pt_sid} | {pt_date} | ເລດ: {item_lad:,.0f}", y, 20)
             
             base_brand_label = "GIFT CARD"
-            app = MDApp.get_running_app()
-            matched_brand = None
-            if hasattr(app, 'brands_cache') and app.brands_cache:
-                import random
-                matched_brand = random.choice(app.brands_cache)
-            if matched_brand:
-                base_brand_label = matched_brand['name'].upper()
 
             y = draw_center(base_brand_label, y, 24)
             y = draw_center(item['name'], y, 28)
@@ -639,55 +692,70 @@ class VoucherScreen(MDScreen):
 
     def generate_receipt_text(self, shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate):
         width = 32
-        
+
         def center(text):
-            if len(text) >= width: return text
-            spaces = (width - len(text)) // 2
-            return " " * spaces + text
-            
+            t = str(text)
+            if len(t) >= width: return t
+            spaces = (width - len(t)) // 2
+            return " " * spaces + t
+
         def left_right(left, right):
             space_len = width - len(left) - len(right)
             if space_len < 1: space_len = 1
             return left + " " * space_len + right
-            
+
+        def pin_box(text):
+            t = str(text)
+            inner_w = max(len(t) + 4, 14)  # min box width
+            top    = "+" + "-" * inner_w + "+"
+            middle = "|" + t.center(inner_w) + "|"
+            bottom = "+" + "-" * inner_w + "+"
+            pad = (width - inner_w - 2) // 2
+            sp = " " * pad
+            return sp + top + "\n" + sp + middle + "\n" + sp + bottom
+
+        sep = "-" * width
         lines = []
+
+        # Header
         lines.append(center(shop_name))
         lines.append(center(f"Phone: {pt_phone}"))
-        lines.append("-" * width)
-        
+        lines.append(sep)
+
         for item in items:
             item_lad = float(item.get('lad', pt_rate))
-            lines.append(center(f"ID: #{pt_sid} | {pt_date}"))
-            lines.append(center(f"Rate: {item_lad:,.0f}"))
-            
-            lines.append(center("GIFT CARD"))
-            lines.append(center(item['name']))
-            
             price_lak = float(item['price_lak'])
             price_thb = float(item['price_thb'])
             price_bonus = float(item.get('price_bonus', 0))
-            
-            bonus_text = f" + ໂບນັດ {price_bonus:,.2f} THB" if price_bonus > 0 else ""
-            lines.append(center(f"{price_lak:,.0f} LAK / {price_thb:,.2f} THB{bonus_text}"))
-            
-            lines.append(center("PIN CODE / REDEEM CODE"))
-            lines.append(center(str(item.get('pw', 'N/A'))))
-            lines.append("-" * width)
-            
+            pw = str(item.get('pw', 'N/A'))
+
+            lines.append(center(f"ID: #{pt_sid} | {pt_date}"))
+            lines.append(center(f"Rate: {item_lad:,.0f}"))
+            lines.append(center("GIFT CARD"))
+            lines.append(center(item['name']))
+
+            bonus_text = f" + Bonus {price_bonus:.2f} THB" if price_bonus > 0 else ""
+            lines.append(center(f"{price_lak:,.0f} LAK / {price_thb:.2f} THB{bonus_text}"))
+
+            lines.append(center("--- PIN CODE / REDEEM CODE ---"))
+            lines.append(pin_box(pw))   # ← Box around PIN only
+            lines.append(sep)
+
+        # Summary
         lines.append(left_right("Total LAK:", f"{total_lak:,.0f} LAK"))
-        lines.append(left_right("Total THB:", f"{pt_thb:,.2f} THB"))
+        lines.append(left_right("Total THB:", f"{pt_thb:.2f} THB"))
         if pt_bonus > 0:
-            lines.append(left_right("Total Bonus:", f"+ {pt_bonus:,.2f} THB"))
-            
-        lines.append("-" * width)
+            lines.append(left_right("Total Bonus:", f"+ {pt_bonus:.2f} THB"))
+        lines.append(sep)
         lines.append(left_right("Received:", f"{pt_rec:,.0f} LAK"))
         lines.append(left_right("Change:", f"{pt_chg:,.0f} LAK"))
-        
+
+        # Footer
         lines.append("")
-        lines.append(center("*** ທຸກບິນທີ່ຂາຍໄປຢູ່ໄດ້ບໍ່ເກີນ 3 ວັນ ***"))
-        lines.append(center("ຂອບໃຈທີ່ໃຊ້ບໍລິການ!"))
-        lines.append("\n\n\n\n\n") # Feed lines
-        
+        lines.append(center("*** Voucher valid within 3 days ***"))
+        lines.append(center("Thank you for your purchase!"))
+        lines.append("\n\n\n\n")
+
         return "\n".join(lines)
 
     def _print_via_socket(self, mac, name, receipt_data=None):
@@ -2777,7 +2845,6 @@ class Bin888App(MDApp):
     base_url = "https://bm9999.pythonanywhere.com"
     APP_KEY = "Bin888-Premium-Mobile-Key-2024"
     APP_VERSION = "1.0.7"
-    brands_cache = []
     printer = PrinterManager()
     
     _last_activity = datetime.now()
@@ -2830,8 +2897,6 @@ class Bin888App(MDApp):
         
         # Persistence Logic: Auto-Login & Screen Restore
         self.load_config()
-        # Fetch brands from correct backend
-        self.fetch_brands()
         
         if self.config_data.get('token'):
             # If we have a token, skip login
@@ -2911,23 +2976,6 @@ class Bin888App(MDApp):
                 except: pass
         if not self.update_dialog._is_open:
             self.update_dialog.open()
-
-    def fetch_brands(self):
-        try:
-            # Simple fetch to populate categories/logos
-            headers = {
-                'X-App-Access-Key': self.APP_KEY,
-                'X-App-Version': self.APP_VERSION
-            }
-            print(f"Fetching brands from: {self.base_url}/api/v1/brands/")
-            response = requests.get(f"{self.base_url}/api/v1/brands/", headers=headers, timeout=5)
-            if response.status_code == 200:
-                self.brands_cache = response.json()
-                print(f"Loaded {len(self.brands_cache)} brands from server")
-            else:
-                print(f"Failed to fetch brands. Status: {response.status_code}, Msg: {response.text}")
-        except Exception as e:
-            print(f"Could not fetch brands: {e}")
 
 if __name__ == "__main__":
     Bin888App().run()
