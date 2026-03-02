@@ -693,6 +693,12 @@ class VoucherScreen(MDScreen):
     def generate_receipt_text(self, shop_name, items, total_lak, pt_thb, pt_bonus, pt_rec, pt_chg, pt_sid, pt_date, pt_phone, pt_rate):
         width = 32
 
+        # ESC/POS commands
+        FONT_A   = "\x1b\x4d\x00"  # Normal font 
+        FONT_B   = "\x1b\x4d\x01"  # Small font (~30% smaller)
+        BOLD_ON  = "\x1b\x45\x01"  # Bold text
+        BOLD_OFF = "\x1b\x45\x00"
+
         def center(text):
             t = str(text)
             if len(t) >= width: return t
@@ -717,9 +723,9 @@ class VoucherScreen(MDScreen):
         sep = "-" * width
         lines = []
 
-        # Header
-        lines.append(center(shop_name))
-        lines.append(center(f"Phone: {pt_phone}"))
+        # Header - Large/bold shop name, small details
+        lines.append(FONT_A + BOLD_ON + center(shop_name) + BOLD_OFF)
+        lines.append(FONT_B + center(f"Phone: {pt_phone}"))
         lines.append(sep)
 
         for item in items:
@@ -729,20 +735,24 @@ class VoucherScreen(MDScreen):
             price_bonus = float(item.get('price_bonus', 0))
             pw = str(item.get('pw', 'N/A'))
 
-            lines.append(center(f"ID: #{pt_sid} | {pt_date}"))
-            lines.append(center(f"Rate: {item_lad:,.0f}"))
+            # Details: Font B (small)
+            lines.append(FONT_B + center(f"#{pt_sid} | {pt_date} | {item_lad:.0f}"))
             lines.append(center("GIFT CARD"))
-            lines.append(center(item['name']))
-
-            bonus_text = f" + Bonus {price_bonus:.2f} THB" if price_bonus > 0 else ""
-            lines.append(center(f"{price_lak:,.0f} LAK / {price_thb:.2f} THB{bonus_text}"))
-
+            
+            # Item Name: Font A (normal) + Bold
+            lines.append(FONT_A + BOLD_ON + center(item['name']) + BOLD_OFF)
+            
+            # Price: Font B (small)
+            bonus_text = f" + Bonus {price_bonus:.2f}" if price_bonus > 0 else ""
+            lines.append(FONT_B + center(f"{price_lak:,.0f}LAK / {price_thb:.2f}THB{bonus_text}"))
             lines.append(center("--- PIN CODE / REDEEM CODE ---"))
-            lines.append(pin_box(pw))   # ← Box around PIN only
-            lines.append(sep)
+            
+            # PIN Box: Font A (normal) + Bold
+            lines.append(FONT_A + BOLD_ON + pin_box(pw) + BOLD_OFF)
+            lines.append(FONT_B + sep)
 
-        # Summary
-        lines.append(left_right("Total LAK:", f"{total_lak:,.0f} LAK"))
+        # Summary - Font B (small)
+        lines.append(FONT_B + left_right("Total LAK:", f"{total_lak:,.0f} LAK"))
         lines.append(left_right("Total THB:", f"{pt_thb:.2f} THB"))
         if pt_bonus > 0:
             lines.append(left_right("Total Bonus:", f"+ {pt_bonus:.2f} THB"))
@@ -750,11 +760,13 @@ class VoucherScreen(MDScreen):
         lines.append(left_right("Received:", f"{pt_rec:,.0f} LAK"))
         lines.append(left_right("Change:", f"{pt_chg:,.0f} LAK"))
 
-        # Footer
+        # Footer 
         lines.append("")
         lines.append(center("*** Voucher valid within 3 days ***"))
         lines.append(center("Thank you for your purchase!"))
-        lines.append("\n\n\n\n")
+        
+        # Feed lines (Return to normal font first to avoid side effects on next print)
+        lines.append(FONT_A + "\n\n\n\n")
 
         return "\n".join(lines)
 
